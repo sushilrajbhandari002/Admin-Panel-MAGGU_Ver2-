@@ -1,12 +1,15 @@
-import { useState } from 'react';
-import { Search, Filter, Plus, Download, Edit, Trash2, Eye, Upload, User } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Search, Filter, Plus, Download, Edit, Trash2, Eye, Upload, User, X } from 'lucide-react';
 import { useSchoolSettings } from './SchoolSettingsContext';
 import { useThemeStyles } from './useThemeStyles';
+import { useAdminData } from './AdminDataContext';
+import { apiFetch } from '../lib/api';
+import { toast } from 'sonner@2.0.3';
 
 interface Student {
   id: number;
   name: string;
-  class: string;
+  class?: string | null;
   rollNo: string;
   phone: string;
   email: string;
@@ -21,30 +24,107 @@ interface Student {
 export function StudentManagement() {
   const { t } = useSchoolSettings();
   const theme = useThemeStyles();
+  const adminData = useAdminData();
   const [selectedClass, setSelectedClass] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<number | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importClass, setImportClass] = useState('');
-  const [students, setStudents] = useState<Student[]>([
-    { id: 1, name: 'Emma Thompson', class: 'Grade 10', rollNo: '2023001', phone: '555-0101', email: 'emma.t@email.com', guardian: 'John Thompson', address: '123 Main St', status: 'Active', dateOfBirth: '2008-05-15', admissionDate: '2023-04-01' },
-    { id: 2, name: 'Michael Chen', class: 'Grade 9', rollNo: '2023045', phone: '555-0102', email: 'michael.c@email.com', guardian: 'Lisa Chen', address: '456 Oak Ave', status: 'Active', dateOfBirth: '2009-03-22', admissionDate: '2023-04-01' },
-    { id: 3, name: 'Sophia Rodriguez', class: 'Grade 11', rollNo: '2022098', phone: '555-0103', email: 'sophia.r@email.com', guardian: 'Carlos Rodriguez', address: '789 Pine Rd', status: 'Active', dateOfBirth: '2007-11-08', admissionDate: '2022-04-01' },
-    { id: 4, name: 'James Wilson', class: 'Grade 10', rollNo: '2023012', phone: '555-0104', email: 'james.w@email.com', guardian: 'Sarah Wilson', address: '321 Elm St', status: 'Active', dateOfBirth: '2008-07-19', admissionDate: '2023-04-01' },
-    { id: 5, name: 'Olivia Brown', class: 'Grade 12', rollNo: '2021067', phone: '555-0105', email: 'olivia.b@email.com', guardian: 'David Brown', address: '654 Maple Dr', status: 'Active', dateOfBirth: '2006-09-30', admissionDate: '2021-04-01' },
-    { id: 6, name: 'Ethan Davis', class: 'Grade 9', rollNo: '2023056', phone: '555-0106', email: 'ethan.d@email.com', guardian: 'Jennifer Davis', address: '987 Cedar Ln', status: 'Active', dateOfBirth: '2009-01-14', admissionDate: '2023-04-01' },
-    { id: 7, name: 'Ava Martinez', class: 'Grade 11', rollNo: '2022089', phone: '555-0107', email: 'ava.m@email.com', guardian: 'Miguel Martinez', address: '147 Birch Way', status: 'Inactive', dateOfBirth: '2007-12-25', admissionDate: '2022-04-01' },
-    { id: 8, name: 'Noah Johnson', class: 'Grade 8', rollNo: '2024023', phone: '555-0108', email: 'noah.j@email.com', guardian: 'Emily Johnson', address: '258 Spruce Ct', status: 'Active', dateOfBirth: '2010-06-05', admissionDate: '2024-04-01' },
-  ]);
+  const [students, setStudents] = useState<Student[]>(adminData.students as Student[]);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    password: '',
+    phone: '',
+    address: '',
+    class: '',
+    rollNumber: '',
+  });
 
-  const classes = ['all', 'Grade 6', 'Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'];
+  useEffect(() => {
+    setStudents(adminData.students as Student[]);
+  }, [adminData.students]);
+
+  const classes = ['all', ...Array.from(new Set(students.map((student) => student.class ?? 'Unknown')))];
 
   const filteredStudents = students.filter(student => {
-    const matchesClass = selectedClass === 'all' || student.class === selectedClass;
+    const studentClass = student.class ?? 'Unknown';
+    const matchesClass = selectedClass === 'all' || studentClass === selectedClass;
     const matchesSearch = student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          student.rollNo.includes(searchQuery);
     return matchesClass && matchesSearch;
   });
+
+  const handleDeleteStudent = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this student?')) return;
+    
+    try {
+      await apiFetch(`/admin/users/${id}`, {
+        method: 'DELETE',
+      });
+      toast.success('Student deleted successfully!');
+      window.location.reload();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to delete student');
+    }
+  };
+
+  const handleEditClick = (student: Student) => {
+    setEditingStudent(student);
+    setFormData({
+      name: student.name,
+      email: student.email,
+      password: '', // Don't pre-fill password
+      phone: student.phone,
+      address: student.address,
+      class: student.class || '',
+      rollNumber: student.rollNo,
+    });
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingStudent) return;
+    if (!formData.name || !formData.email) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const payload: any = {
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone || undefined,
+        address: formData.address || undefined,
+        class: formData.class || undefined,
+        rollNumber: formData.rollNumber || undefined,
+      };
+
+      // Only include password if it's been changed
+      if (formData.password) {
+        payload.password = formData.password;
+      }
+
+      await apiFetch(`/admin/users/${editingStudent.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+
+      toast.success('Student updated successfully!');
+      setShowEditModal(false);
+      setEditingStudent(null);
+      window.location.reload();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update student');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleImportExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -148,6 +228,7 @@ export function StudentManagement() {
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3">
           <button 
+            onClick={() => setIsAddDialogOpen(true)}
             className="flex items-center justify-center gap-2 px-4 py-2 text-white rounded-lg transition-colors"
             style={{ backgroundColor: theme.primaryColor }}
           >
@@ -196,7 +277,7 @@ export function StudentManagement() {
                       <p className={`${theme.subtextColor} text-sm`}>{student.email}</p>
                     </div>
                   </td>
-                  <td className={`px-6 py-4 ${theme.textColor}`}>{student.class}</td>
+                  <td className={`px-6 py-4 ${theme.textColor}`}>{student.class ?? 'N/A'}</td>
                   <td className={`px-6 py-4 ${theme.textColor}`}>{student.phone}</td>
                   <td className={`px-6 py-4 ${theme.textColor}`}>{student.guardian}</td>
                   <td className="px-6 py-4">
@@ -217,10 +298,16 @@ export function StudentManagement() {
                       >
                         <Eye className="w-4 h-4" />
                       </button>
-                      <button className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors">
+                      <button 
+                        onClick={() => handleEditClick(student)}
+                        className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                      >
                         <Edit className="w-4 h-4" />
                       </button>
-                      <button className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                      <button 
+                        onClick={() => handleDeleteStudent(student.id)}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
@@ -259,7 +346,7 @@ export function StudentManagement() {
               </div>
               <div>
                 <span className={`${theme.subtextColor}`}>{t('class')}: </span>
-                <span className={theme.textColor}>{student.class}</span>
+                <span className={theme.textColor}>{student.class ?? 'N/A'}</span>
               </div>
               <div className="col-span-2">
                 <span className={`${theme.subtextColor}`}>{t('phone')}: </span>
@@ -341,7 +428,7 @@ export function StudentManagement() {
                   </div>
                   <div>
                     <p className="text-gray-600 text-sm mb-1">Class</p>
-                    <p className="text-gray-900">{student.class}</p>
+                    <p className="text-gray-900">{student.class ?? 'N/A'}</p>
                   </div>
                   <div>
                     <p className="text-gray-600 text-sm mb-1">Status</p>
@@ -378,7 +465,13 @@ export function StudentManagement() {
               </div>
               
               <div className="flex gap-3">
-                <button className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                <button 
+                  onClick={() => {
+                    setSelectedStudent(null);
+                    handleEditClick(student);
+                  }}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
                   Edit Student
                 </button>
                 <button
@@ -452,6 +545,339 @@ export function StudentManagement() {
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Student Modal */}
+      {isAddDialogOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full my-8">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-gray-900 text-xl font-semibold">Add New Student</h2>
+              <button
+                onClick={() => {
+                  setIsAddDialogOpen(false);
+                  setFormData({
+                    name: '',
+                    email: '',
+                    password: '',
+                    phone: '',
+                    address: '',
+                    class: '',
+                    rollNumber: '',
+                  });
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <form 
+              className="space-y-4"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!formData.name || !formData.email || !formData.password) {
+                  toast.error('Please fill in all required fields');
+                  return;
+                }
+
+                setIsSubmitting(true);
+                try {
+                  const payload: any = {
+                    name: formData.name,
+                    email: formData.email,
+                    password: formData.password,
+                    role: 'student' as const,
+                    phone: formData.phone || undefined,
+                    address: formData.address || undefined,
+                    class: formData.class || undefined,
+                    rollNumber: formData.rollNumber || undefined,
+                  };
+
+                  await apiFetch('/admin/users', {
+                    method: 'POST',
+                    body: JSON.stringify(payload),
+                  });
+
+                  // Reset form and reload data
+                  setFormData({
+                    name: '',
+                    email: '',
+                    password: '',
+                    phone: '',
+                    address: '',
+                    class: '',
+                    rollNumber: '',
+                  });
+                  setIsAddDialogOpen(false);
+                  window.location.reload();
+                  toast.success('Student created successfully!');
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : 'Failed to create student');
+                } finally {
+                  setIsSubmitting(false);
+                }
+              }}
+            >
+              <div>
+                <label htmlFor="student-name" className="text-gray-700 mb-2 block">Full Name *</label>
+                <input
+                  id="student-name"
+                  type="text"
+                  placeholder="Enter full name"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="student-email" className="text-gray-700 mb-2 block">Email *</label>
+                <input
+                  id="student-email"
+                  type="email"
+                  placeholder="Enter email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="student-password" className="text-gray-700 mb-2 block">Password *</label>
+                <input
+                  id="student-password"
+                  type="password"
+                  placeholder="Enter password (min 6 characters)"
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                  minLength={6}
+                />
+              </div>
+              <div>
+                <label htmlFor="student-phone" className="text-gray-700 mb-2 block">Phone</label>
+                <input
+                  id="student-phone"
+                  type="tel"
+                  placeholder="Enter phone number"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label htmlFor="student-address" className="text-gray-700 mb-2 block">Address</label>
+                <input
+                  id="student-address"
+                  type="text"
+                  placeholder="Enter address"
+                  value={formData.address}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label htmlFor="student-class" className="text-gray-700 mb-2 block">Class</label>
+                <input
+                  id="student-class"
+                  type="text"
+                  placeholder="e.g., Class 10A"
+                  value={formData.class}
+                  onChange={(e) => setFormData({ ...formData, class: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label htmlFor="student-rollNumber" className="text-gray-700 mb-2 block">Roll Number</label>
+                <input
+                  id="student-rollNumber"
+                  type="text"
+                  placeholder="Enter roll number"
+                  value={formData.rollNumber}
+                  onChange={(e) => setFormData({ ...formData, rollNumber: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddDialogOpen(false);
+                    setFormData({
+                      name: '',
+                      email: '',
+                      password: '',
+                      phone: '',
+                      address: '',
+                      class: '',
+                      rollNumber: '',
+                    });
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? 'Adding...' : 'Add Student'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Student Modal */}
+      {showEditModal && editingStudent && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full my-8">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-gray-900 text-xl font-semibold">Edit Student</h2>
+              <button
+                onClick={() => {
+                  setShowEditModal(false);
+                  setEditingStudent(null);
+                  setFormData({
+                    name: '',
+                    email: '',
+                    password: '',
+                    phone: '',
+                    address: '',
+                    class: '',
+                    rollNumber: '',
+                  });
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <form 
+              className="space-y-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSaveEdit();
+              }}
+            >
+              <div>
+                <label htmlFor="edit-student-name" className="text-gray-700 mb-2 block">Full Name *</label>
+                <input
+                  id="edit-student-name"
+                  type="text"
+                  placeholder="Enter full name"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="edit-student-email" className="text-gray-700 mb-2 block">Email *</label>
+                <input
+                  id="edit-student-email"
+                  type="email"
+                  placeholder="Enter email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="edit-student-password" className="text-gray-700 mb-2 block">Password (leave blank to keep current)</label>
+                <input
+                  id="edit-student-password"
+                  type="password"
+                  placeholder="Enter new password (min 6 characters)"
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  minLength={6}
+                />
+              </div>
+              <div>
+                <label htmlFor="edit-student-phone" className="text-gray-700 mb-2 block">Phone</label>
+                <input
+                  id="edit-student-phone"
+                  type="tel"
+                  placeholder="Enter phone number"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label htmlFor="edit-student-address" className="text-gray-700 mb-2 block">Address</label>
+                <input
+                  id="edit-student-address"
+                  type="text"
+                  placeholder="Enter address"
+                  value={formData.address}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label htmlFor="edit-student-class" className="text-gray-700 mb-2 block">Class</label>
+                <input
+                  id="edit-student-class"
+                  type="text"
+                  placeholder="e.g., Class 10A"
+                  value={formData.class}
+                  onChange={(e) => setFormData({ ...formData, class: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label htmlFor="edit-student-rollNumber" className="text-gray-700 mb-2 block">Roll Number</label>
+                <input
+                  id="edit-student-rollNumber"
+                  type="text"
+                  placeholder="Enter roll number"
+                  value={formData.rollNumber}
+                  onChange={(e) => setFormData({ ...formData, rollNumber: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditModal(false);
+                    setEditingStudent(null);
+                    setFormData({
+                      name: '',
+                      email: '',
+                      password: '',
+                      phone: '',
+                      address: '',
+                      class: '',
+                      rollNumber: '',
+                    });
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

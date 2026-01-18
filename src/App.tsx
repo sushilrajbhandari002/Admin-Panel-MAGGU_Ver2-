@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { StudentManagement } from './components/StudentManagement';
@@ -10,28 +10,71 @@ import { SchoolProfile } from './components/SchoolProfile';
 import { SchoolSettings } from './components/SchoolSettings';
 import { Login } from './components/Login';
 import { SchoolSettingsProvider, useSchoolSettings } from './components/SchoolSettingsContext';
+import { AdminDataProvider, type AdminDashboardData } from './components/AdminDataContext';
+import { apiFetch } from './lib/api';
 import { Menu } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [adminData, setAdminData] = useState<AdminDashboardData | null>(null);
+  const [isLoadingData, setIsLoadingData] = useState(false);
+  const [dataError, setDataError] = useState<string | null>(null);
+
+  // Persist auth across refreshes
+  useEffect(() => {
+    const storedAuth = localStorage.getItem('admin:isAuthenticated');
+    if (storedAuth === 'true') {
+      setIsAuthenticated(true);
+    }
+  }, []);
 
   const handleLogin = () => {
     setIsAuthenticated(true);
+    localStorage.setItem('admin:isAuthenticated', 'true');
   };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    localStorage.removeItem('admin:isAuthenticated');
+    setAdminData(null);
+  };
+
+  const loadAdminData = useCallback(() => {
+    setIsLoadingData(true);
+    setDataError(null);
+    apiFetch<AdminDashboardData>('/admin/dashboard')
+      .then(setAdminData)
+      .catch((err) => setDataError(err.message ?? 'Failed to load admin data'))
+      .finally(() => setIsLoadingData(false));
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadAdminData();
+    }
+  }, [isAuthenticated, loadAdminData]);
 
   return (
     <SchoolSettingsProvider>
       {!isAuthenticated ? (
         <Login onLogin={handleLogin} />
+      ) : isLoadingData || !adminData ? (
+        <div className="flex items-center justify-center min-h-screen">
+          <p className="text-gray-600">
+            {dataError ? dataError : 'Loading admin data...'}
+          </p>
+        </div>
       ) : (
-        <AppContent activeTab={activeTab} setActiveTab={setActiveTab} />
+        <AdminDataProvider value={adminData}>
+          <AppContent activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} />
+        </AdminDataProvider>
       )}
     </SchoolSettingsProvider>
   );
 }
 
-function AppContent({ activeTab, setActiveTab }: { activeTab: string; setActiveTab: (tab: string) => void }) {
+function AppContent({ activeTab, setActiveTab, onLogout }: { activeTab: string; setActiveTab: (tab: string) => void; onLogout: () => void }) {
   const { settings } = useSchoolSettings();
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
@@ -62,7 +105,7 @@ function AppContent({ activeTab, setActiveTab }: { activeTab: string; setActiveT
     <div className={`flex min-h-screen ${settings.theme === 'dark' ? 'dark bg-gray-900' : 'bg-gray-50'}`}>
       {/* Desktop Sidebar */}
       <div className="hidden lg:block">
-        <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
+        <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={onLogout} />
       </div>
 
       {/* Mobile Sidebar Overlay */}
@@ -83,6 +126,10 @@ function AppContent({ activeTab, setActiveTab }: { activeTab: string; setActiveT
             setActiveTab(tab);
             setIsMobileSidebarOpen(false);
           }} 
+          onLogout={() => {
+            setIsMobileSidebarOpen(false);
+            onLogout();
+          }}
         />
       </div>
       
@@ -98,6 +145,12 @@ function AppContent({ activeTab, setActiveTab }: { activeTab: string; setActiveT
           <h2 className={settings.theme === 'dark' ? 'text-gray-100' : 'text-gray-900'}>
             Sushil School
           </h2>
+          <button
+            onClick={onLogout}
+            className="ml-auto text-sm text-red-600 hover:text-red-700"
+          >
+            Logout
+          </button>
         </div>
 
         {/* Content */}

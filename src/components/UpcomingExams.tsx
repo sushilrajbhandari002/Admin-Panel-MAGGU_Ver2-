@@ -1,11 +1,17 @@
 import { FileText } from 'lucide-react';
+import { useAdminData } from './AdminDataContext';
 
 export function UpcomingExams() {
-  const exams = [
-    { id: 1, subject: 'Mathematics', date: 'Dec 1', class: 'Grade 10' },
-    { id: 2, subject: 'Science', date: 'Dec 3', class: 'Grade 9' },
-    { id: 3, subject: 'English', date: 'Dec 5', class: 'Grade 11' },
-  ];
+  const data = useAdminData();
+  const exams = data.events.slice(0, 3).map((event) => ({
+    id: event.id,
+    subject: event.title,
+    date: new Date(event.date).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+    }),
+    class: event.venue,
+  }));
 
   return (
     <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
@@ -15,6 +21,7 @@ export function UpcomingExams() {
       </div>
       
       <div className="space-y-3">
+        {exams.length === 0 && <p className="text-sm text-gray-500">No upcoming exams</p>}
         {exams.map((exam) => (
           <div key={exam.id} className="p-3 border border-gray-200 rounded-lg hover:border-orange-300 transition-colors">
             <p className="text-gray-900 text-sm mb-1">{exam.subject}</p>

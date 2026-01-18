@@ -4,9 +4,10 @@ import { useSchoolSettings } from './SchoolSettingsContext';
 interface SidebarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
+  onLogout?: () => void;
 }
 
-export function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
+export function Sidebar({ activeTab, setActiveTab, onLogout }: SidebarProps) {
   const { settings, t } = useSchoolSettings();
 
   const menuItems = [
@@ -87,6 +88,15 @@ export function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
             );
           })}
         </nav>
+
+        {onLogout && (
+          <button
+            onClick={onLogout}
+            className={`mt-6 w-full px-4 py-2 rounded-lg border ${isDark ? 'border-gray-700 text-red-300 hover:bg-gray-700' : 'border-gray-200 text-red-600 hover:bg-red-50'}`}
+          >
+            {t('logout') || 'Logout'}
+          </button>
+        )}
       </div>
     </aside>
   );

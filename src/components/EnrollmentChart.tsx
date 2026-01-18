@@ -1,14 +1,35 @@
+import { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { useAdminData } from './AdminDataContext';
 
 export function EnrollmentChart() {
-  const data = [
-    { month: 'Jan', students: 2200, teachers: 135 },
-    { month: 'Feb', students: 2280, teachers: 138 },
-    { month: 'Mar', students: 2350, teachers: 140 },
-    { month: 'Apr', students: 2420, teachers: 140 },
-    { month: 'May', students: 2480, teachers: 141 },
-    { month: 'Jun', students: 2543, teachers: 142 },
-  ];
+  const adminData = useAdminData();
+  const [data, setData] = useState([
+    { month: 'Jan', students: 0, teachers: 0 },
+    { month: 'Feb', students: 0, teachers: 0 },
+    { month: 'Mar', students: 0, teachers: 0 },
+    { month: 'Apr', students: 0, teachers: 0 },
+    { month: 'May', students: 0, teachers: 0 },
+    { month: 'Jun', students: 0, teachers: 0 },
+  ]);
+
+  useEffect(() => {
+    // Generate trend data based on current stats
+    const currentStudents = adminData.stats.find(s => s.label === 'Total Students')?.value ?? 0;
+    const currentTeachers = adminData.stats.find(s => s.label === 'Total Teachers')?.value ?? 0;
+    
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+    const trendData = months.map((month, index) => {
+      // Simulate growth trend
+      const growthFactor = 1 - (months.length - index - 1) * 0.05;
+      return {
+        month,
+        students: Math.round(currentStudents * growthFactor),
+        teachers: Math.round(currentTeachers * growthFactor),
+      };
+    });
+    setData(trendData);
+  }, [adminData.stats]);
 
   return (
     <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">

@@ -1,5 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Search, Plus, Download, Edit, Trash2, Eye, Mail, Phone, X, Save } from 'lucide-react';
+import { useAdminData } from './AdminDataContext';
+import { apiFetch } from '../lib/api';
+import { toast } from 'sonner@2.0.3';
 
 interface Teacher {
   id: number;
@@ -23,116 +26,47 @@ export function TeacherManagement() {
   const [selectedTeacher, setSelectedTeacher] = useState<number | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null);
-  
-  const [teachers, setTeachers] = useState<Teacher[]>([
-    { 
-      id: 1, 
-      name: 'Dr. Sarah Johnson', 
-      role: 'Principal', 
-      subjects: ['Administration'], 
-      phone: '555-1001', 
-      email: 'sarah.j@school.com',
-      qualification: 'Ph.D. in Education',
-      experience: '15 years',
-      joinDate: '2010-01-15',
-      status: 'Active',
-      post: 'Principal',
-      isClassTeacher: false
-    },
-    { 
-      id: 2, 
-      name: 'Robert Williams', 
-      role: 'Senior Teacher', 
-      subjects: ['Mathematics', 'Physics'], 
-      phone: '555-1002', 
-      email: 'robert.w@school.com',
-      qualification: 'M.Sc. Mathematics',
-      experience: '12 years',
-      joinDate: '2011-08-20',
-      status: 'Active',
-      post: 'Senior Teacher',
-      isClassTeacher: true,
-      classTeacherOf: 'Grade 10',
-      teachingClasses: ['Grade 9', 'Grade 10', 'Grade 11']
-    },
-    { 
-      id: 3, 
-      name: 'Emily Davis', 
-      role: 'Teacher', 
-      subjects: ['English', 'Literature'], 
-      phone: '555-1003', 
-      email: 'emily.d@school.com',
-      qualification: 'M.A. English',
-      experience: '8 years',
-      joinDate: '2015-03-10',
-      status: 'Active',
-      post: 'Assistant Teacher',
-      isClassTeacher: true,
-      classTeacherOf: 'Grade 8',
-      teachingClasses: ['Grade 7', 'Grade 8', 'Grade 9']
-    },
-    { 
-      id: 4, 
-      name: 'Michael Brown', 
-      role: 'Teacher', 
-      subjects: ['Chemistry', 'Biology'], 
-      phone: '555-1004', 
-      email: 'michael.b@school.com',
-      qualification: 'M.Sc. Chemistry',
-      experience: '10 years',
-      joinDate: '2013-07-05',
-      status: 'Active',
-      post: 'Senior Teacher',
-      isClassTeacher: false,
-      teachingClasses: ['Grade 10', 'Grade 11', 'Grade 12']
-    },
-    { 
-      id: 5, 
-      name: 'Jennifer Garcia', 
-      role: 'Teacher', 
-      subjects: ['History', 'Geography'], 
-      phone: '555-1005', 
-      email: 'jennifer.g@school.com',
-      qualification: 'M.A. History',
-      experience: '6 years',
-      joinDate: '2017-09-01',
-      status: 'Active',
-      post: 'Assistant Teacher',
-      isClassTeacher: true,
-      classTeacherOf: 'Grade 7',
-      teachingClasses: ['Grade 6', 'Grade 7']
-    },
-    { 
-      id: 6, 
-      name: 'David Martinez', 
-      role: 'Sports Coach', 
-      subjects: ['Physical Education'], 
-      phone: '555-1006', 
-      email: 'david.m@school.com',
-      qualification: 'B.P.Ed',
-      experience: '7 years',
-      joinDate: '2016-01-15',
-      status: 'Active',
-      post: 'Sports Coach',
-      isClassTeacher: false,
-      teachingClasses: ['All Classes']
-    },
-    { 
-      id: 7, 
-      name: 'Lisa Anderson', 
-      role: 'Teacher', 
-      subjects: ['Computer Science'], 
-      phone: '555-1007', 
-      email: 'lisa.a@school.com',
-      qualification: 'M.Tech CSE',
-      experience: '5 years',
-      joinDate: '2018-06-20',
-      status: 'On Leave',
-      post: 'Assistant Teacher',
-      isClassTeacher: false,
-      teachingClasses: ['Grade 9', 'Grade 10', 'Grade 11', 'Grade 12']
-    },
-  ]);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    password: '',
+    phone: '',
+    address: '',
+    teacherId: '',
+  });
+  const adminData = useAdminData();
+
+  const mapTeachers = (teacherData: typeof adminData.teachers): Teacher[] =>
+    teacherData.map((teacher) => {
+      const classesArray = Array.isArray(teacher.classes) ? teacher.classes : [];
+      const subjectArray = teacher.subject ? [teacher.subject] : [];
+      const subjects = classesArray.length > 0 ? classesArray : subjectArray;
+      
+      return {
+        id: teacher.id,
+        name: teacher.name,
+        role: 'Teacher',
+        subjects: subjects,
+        phone: teacher.phone ?? '',
+        email: teacher.email,
+        qualification: 'B.Ed.',
+        experience: '5 years',
+        joinDate: '2018-01-01',
+        status: teacher.status,
+        post: teacher.subject,
+        isClassTeacher: classesArray.length > 0,
+        classTeacherOf: classesArray[0],
+        teachingClasses: classesArray,
+      };
+    });
+
+  const [teachers, setTeachers] = useState<Teacher[]>(mapTeachers(adminData.teachers));
+
+  useEffect(() => {
+    setTeachers(mapTeachers(adminData.teachers));
+  }, [adminData.teachers]);
 
   const filteredTeachers = teachers.filter(teacher =>
     teacher.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -140,21 +74,77 @@ export function TeacherManagement() {
     teacher.role.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const handleDeleteTeacher = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this teacher?')) return;
+    
+    try {
+      await apiFetch(`/admin/users/${id}`, {
+        method: 'DELETE',
+      });
+      toast.success('Teacher deleted successfully!');
+      window.location.reload();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to delete teacher');
+    }
+  };
+
+  const handleExport = () => {
+    // Create CSV content
+    const headers = ['Name', 'Email', 'Phone', 'Role', 'Teacher ID', 'Status', 'Subjects'];
+    const csvContent = [
+      headers.join(','),
+      ...filteredTeachers.map(t => 
+        [
+          t.name,
+          t.email,
+          t.phone,
+          t.role,
+          t.teacherId || '',
+          t.status,
+          t.subjects.join('; ')
+        ].join(',')
+      )
+    ].join('\n');
+
+    // Download CSV
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `teachers_export_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success('Teachers exported successfully!');
+  };
+
   const handleEditClick = (teacher: Teacher) => {
     setEditingTeacher({ ...teacher });
     setShowEditModal(true);
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!editingTeacher) return;
 
-    const updatedTeachers = teachers.map(t => 
-      t.id === editingTeacher.id ? editingTeacher : t
-    );
-    setTeachers(updatedTeachers);
-    setShowEditModal(false);
-    setEditingTeacher(null);
-    alert('Teacher information updated successfully!');
+    try {
+      const payload: any = {
+        name: editingTeacher.name,
+        email: editingTeacher.email,
+        phone: editingTeacher.phone,
+        address: editingTeacher.address || '',
+      };
+
+      await apiFetch(`/admin/users/${editingTeacher.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+
+      toast.success('Teacher updated successfully!');
+      setShowEditModal(false);
+      setEditingTeacher(null);
+      window.location.reload();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update teacher');
+    }
   };
 
   const handleSubjectsChange = (value: string) => {
@@ -194,11 +184,17 @@ export function TeacherManagement() {
 
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-          <button className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+          <button 
+            onClick={() => setIsAddDialogOpen(true)}
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
             <Plus className="w-5 h-5" />
             <span className="text-sm sm:text-base">Add Teacher</span>
           </button>
-          <button className="flex items-center justify-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+          <button 
+            onClick={handleExport}
+            className="flex items-center justify-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >
             <Download className="w-5 h-5" />
             <span className="text-sm sm:text-base">Export</span>
           </button>
@@ -267,7 +263,10 @@ export function TeacherManagement() {
               >
                 <Edit className="w-4 h-4" />
               </button>
-              <button className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+              <button 
+                onClick={() => handleDeleteTeacher(teacher.id)}
+                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              >
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>
@@ -582,6 +581,178 @@ export function TeacherManagement() {
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Teacher Modal */}
+      {isAddDialogOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full my-8">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-gray-900 text-xl font-semibold">Add New Teacher</h2>
+              <button
+                onClick={() => {
+                  setIsAddDialogOpen(false);
+                  setFormData({
+                    name: '',
+                    email: '',
+                    password: '',
+                    phone: '',
+                    address: '',
+                    teacherId: '',
+                  });
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <form 
+              className="space-y-4"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!formData.name || !formData.email || !formData.password) {
+                  toast.error('Please fill in all required fields');
+                  return;
+                }
+
+                setIsSubmitting(true);
+                try {
+                  const payload: any = {
+                    name: formData.name,
+                    email: formData.email,
+                    password: formData.password,
+                    role: 'teacher' as const,
+                    phone: formData.phone || undefined,
+                    address: formData.address || undefined,
+                    teacherId: formData.teacherId || undefined,
+                  };
+
+                  await apiFetch('/admin/users', {
+                    method: 'POST',
+                    body: JSON.stringify(payload),
+                  });
+
+                  // Reset form and reload data
+                  setFormData({
+                    name: '',
+                    email: '',
+                    password: '',
+                    phone: '',
+                    address: '',
+                    teacherId: '',
+                  });
+                  setIsAddDialogOpen(false);
+                  // Refresh admin data
+                  window.location.reload();
+                  toast.success('Teacher created successfully!');
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : 'Failed to create teacher');
+                } finally {
+                  setIsSubmitting(false);
+                }
+              }}
+            >
+              <div>
+                <label htmlFor="teacher-name" className="text-gray-700 mb-2 block">Full Name *</label>
+                <input
+                  id="teacher-name"
+                  type="text"
+                  placeholder="Enter full name"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="teacher-email" className="text-gray-700 mb-2 block">Email *</label>
+                <input
+                  id="teacher-email"
+                  type="email"
+                  placeholder="Enter email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="teacher-password" className="text-gray-700 mb-2 block">Password *</label>
+                <input
+                  id="teacher-password"
+                  type="password"
+                  placeholder="Enter password (min 6 characters)"
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                  minLength={6}
+                />
+              </div>
+              <div>
+                <label htmlFor="teacher-phone" className="text-gray-700 mb-2 block">Phone</label>
+                <input
+                  id="teacher-phone"
+                  type="tel"
+                  placeholder="Enter phone number"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label htmlFor="teacher-address" className="text-gray-700 mb-2 block">Address</label>
+                <input
+                  id="teacher-address"
+                  type="text"
+                  placeholder="Enter address"
+                  value={formData.address}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label htmlFor="teacher-teacherId" className="text-gray-700 mb-2 block">Teacher ID</label>
+                <input
+                  id="teacher-teacherId"
+                  type="text"
+                  placeholder="Enter teacher ID"
+                  value={formData.teacherId}
+                  onChange={(e) => setFormData({ ...formData, teacherId: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddDialogOpen(false);
+                    setFormData({
+                      name: '',
+                      email: '',
+                      password: '',
+                      phone: '',
+                      address: '',
+                      teacherId: '',
+                    });
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? 'Adding...' : 'Add Teacher'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

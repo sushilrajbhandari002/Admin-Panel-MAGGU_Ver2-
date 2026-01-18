@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { GraduationCap, Lock, User } from 'lucide-react';
 import { useSchoolSettings } from './SchoolSettingsContext';
+import { API_BASE_URL } from '../lib/api';
 
 interface LoginProps {
   onLogin: () => void;
@@ -10,17 +11,41 @@ export function Login({ onLogin }: LoginProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { settings } = useSchoolSettings();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Simple authentication - you can modify these credentials
-    if (username === 'admin' && password === 'admin123') {
-      onLogin();
-    } else {
-      setError('Invalid username or password');
-    }
+    setError('');
+
+    const login = async () => {
+      try {
+        setIsSubmitting(true);
+        const response = await fetch(`${API_BASE_URL}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: username,
+            password,
+            role: 'admin',
+          }),
+        });
+
+        if (!response.ok) {
+          const data = await response.json().catch(() => null);
+          throw new Error(data?.message ?? 'Invalid username or password');
+        }
+
+        await response.json();
+        onLogin();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Unable to login');
+      } finally {
+        setIsSubmitting(false);
+      }
+    };
+
+    void login();
   };
 
   return (
@@ -59,20 +84,20 @@ export function Login({ onLogin }: LoginProps) {
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label htmlFor="username" className="block text-gray-700 mb-2">
-              Username
+              Email
             </label>
             <div className="relative">
               <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
                 id="username"
-                type="text"
+                type="email"
                 value={username}
                 onChange={(e) => {
                   setUsername(e.target.value);
                   setError('');
                 }}
                 className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Enter your username"
+                placeholder="Enter your email"
                 required
               />
             </div>
@@ -107,15 +132,16 @@ export function Login({ onLogin }: LoginProps) {
 
           <button
             type="submit"
-            className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors"
+            className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-70"
+            disabled={isSubmitting}
           >
-            Sign In
+            {isSubmitting ? 'Signing In...' : 'Sign In'}
           </button>
         </form>
 
         <div className="mt-6 text-center">
           <p className="text-gray-500 text-sm">
-            Demo Credentials: admin / admin123
+            Demo Credentials: admin@sushilschool.edu / admin123
           </p>
         </div>
       </div>

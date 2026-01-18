@@ -1,47 +1,64 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Download, Calendar, TrendingUp, Users, Award, MessageSquare } from 'lucide-react';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, PieChart, Pie, Cell } from 'recharts';
+import { apiFetch } from '../lib/api';
+
+interface ReportsData {
+  attendance: {
+    summary: {
+      totalStudents: number;
+      presentToday: number;
+      absentToday: number;
+      attendanceRate: string;
+    };
+    byClass: Array<{ class: string; present: number; absent: number; percentage: number }>;
+    monthlyTrend: Array<{ month: string; attendance: number; performance: number }>;
+  };
+  performance: {
+    bySubject: Array<{ subject: string; average: number; pass: number; fail: number }>;
+    monthlyTrend: Array<{ month: string; attendance: number; performance: number }>;
+  };
+  feedback: {
+    distribution: Array<{ name: string; value: number; color: string }>;
+  };
+}
 
 export function Reports() {
   const [selectedReport, setSelectedReport] = useState<'attendance' | 'performance' | 'feedback'>('attendance');
   const [dateRange, setDateRange] = useState('thisMonth');
+  const [reportsData, setReportsData] = useState<ReportsData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Attendance Data
-  const attendanceData = [
-    { class: 'Grade 6', present: 245, absent: 12, percentage: 95.3 },
-    { class: 'Grade 7', present: 268, absent: 15, percentage: 94.7 },
-    { class: 'Grade 8', present: 289, absent: 18, percentage: 94.1 },
-    { class: 'Grade 9', present: 312, absent: 22, percentage: 93.4 },
-    { class: 'Grade 10', present: 334, absent: 19, percentage: 94.6 },
-    { class: 'Grade 11', presence: 298, absent: 16, percentage: 94.9 },
-    { class: 'Grade 12', present: 287, absent: 14, percentage: 95.3 },
-  ];
+  useEffect(() => {
+    setIsLoading(true);
+    setError(null);
+    apiFetch<ReportsData>('/admin/reports')
+      .then(setReportsData)
+      .catch((err) => setError(err.message ?? 'Failed to load reports'))
+      .finally(() => setIsLoading(false));
+  }, []);
 
-  // Performance Data
-  const performanceData = [
-    { subject: 'Math', average: 78, pass: 92, fail: 8 },
-    { subject: 'Science', average: 82, pass: 95, fail: 5 },
-    { subject: 'English', average: 85, pass: 97, fail: 3 },
-    { subject: 'History', average: 80, pass: 93, fail: 7 },
-    { subject: 'Geography', average: 77, pass: 90, fail: 10 },
-  ];
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p className="text-gray-600">Loading reports...</p>
+      </div>
+    );
+  }
 
-  // Feedback Distribution
-  const feedbackData = [
-    { name: 'Excellent', value: 45, color: '#10b981' },
-    { name: 'Good', value: 35, color: '#3b82f6' },
-    { name: 'Average', value: 15, color: '#f59e0b' },
-    { name: 'Poor', value: 5, color: '#ef4444' },
-  ];
+  if (error || !reportsData) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p className="text-red-600">{error ?? 'Failed to load reports'}</p>
+      </div>
+    );
+  }
 
-  // Monthly Trend
-  const trendData = [
-    { month: 'Jul', attendance: 93.2, performance: 76 },
-    { month: 'Aug', attendance: 94.1, performance: 78 },
-    { month: 'Sep', attendance: 93.8, performance: 80 },
-    { month: 'Oct', attendance: 94.5, performance: 81 },
-    { month: 'Nov', attendance: 94.7, performance: 82 },
-  ];
+  const attendanceData = reportsData.attendance.byClass;
+  const performanceData = reportsData.performance.bySubject;
+  const feedbackData = reportsData.feedback.distribution;
+  const trendData = reportsData.attendance.monthlyTrend;
 
   return (
     <>
@@ -120,7 +137,7 @@ export function Reports() {
                 </div>
                 <div>
                   <p className="text-gray-600 text-sm">Total Students</p>
-                  <p className="text-gray-900">2,543</p>
+                  <p className="text-gray-900">{reportsData.attendance.summary.totalStudents.toLocaleString()}</p>
                 </div>
               </div>
             </div>
@@ -131,7 +148,7 @@ export function Reports() {
                 </div>
                 <div>
                   <p className="text-gray-600 text-sm">Present Today</p>
-                  <p className="text-gray-900">2,456</p>
+                  <p className="text-gray-900">{reportsData.attendance.summary.presentToday.toLocaleString()}</p>
                 </div>
               </div>
             </div>
@@ -142,7 +159,7 @@ export function Reports() {
                 </div>
                 <div>
                   <p className="text-gray-600 text-sm">Absent Today</p>
-                  <p className="text-gray-900">87</p>
+                  <p className="text-gray-900">{reportsData.attendance.summary.absentToday.toLocaleString()}</p>
                 </div>
               </div>
             </div>
@@ -153,7 +170,7 @@ export function Reports() {
                 </div>
                 <div>
                   <p className="text-gray-600 text-sm">Attendance Rate</p>
-                  <p className="text-gray-900">94.7%</p>
+                  <p className="text-gray-900">{reportsData.attendance.summary.attendanceRate}</p>
                 </div>
               </div>
             </div>
@@ -185,7 +202,7 @@ export function Reports() {
                   <YAxis stroke="#6b7280" />
                   <Tooltip />
                   <Legend />
-                  <Line type="monotone" dataKey="attendance" stroke="#3b82f6" strokeWidth={3} />
+                  <Line type="monotone" dataKey="attendance" stroke="#3b82f6" strokeWidth={3} name="Attendance %" />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -208,19 +225,26 @@ export function Reports() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {attendanceData.map((row, index) => (
-                    <tr key={index} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 text-gray-900">{row.class}</td>
-                      <td className="px-6 py-4 text-gray-700">{row.present + row.absent}</td>
-                      <td className="px-6 py-4 text-green-600">{row.present}</td>
-                      <td className="px-6 py-4 text-red-600">{row.absent}</td>
-                      <td className="px-6 py-4">
-                        <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm">
-                          {row.percentage}%
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {attendanceData.map((row, index) => {
+                    const present = Number(row.present) || 0;
+                    const absent = Number(row.absent) || 0;
+                    const total = present + absent;
+                    const percentage = Number(row.percentage) || 0;
+                    
+                    return (
+                      <tr key={index} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 text-gray-900">{row.class}</td>
+                        <td className="px-6 py-4 text-gray-700">{total}</td>
+                        <td className="px-6 py-4 text-green-600">{present}</td>
+                        <td className="px-6 py-4 text-red-600">{absent}</td>
+                        <td className="px-6 py-4">
+                          <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm">
+                            {percentage}%
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -254,7 +278,7 @@ export function Reports() {
                   <YAxis stroke="#6b7280" />
                   <Tooltip />
                   <Legend />
-                  <Line type="monotone" dataKey="performance" stroke="#10b981" strokeWidth={3} />
+                  <Line type="monotone" dataKey="performance" stroke="#10b981" strokeWidth={3} name="Performance %" />
                 </LineChart>
               </ResponsiveContainer>
             </div>

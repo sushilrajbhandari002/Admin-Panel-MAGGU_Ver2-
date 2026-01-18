@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Calendar, FileText, Award, Edit, Trash2, Bell, X, Save, Upload, Paperclip } from 'lucide-react';
+import { useAdminData } from './AdminDataContext';
+import { apiFetch } from '../lib/api';
 
 interface Notice {
   id: string;
@@ -42,6 +44,7 @@ export function NoticesEvents() {
   const [activeTab, setActiveTab] = useState<'notices' | 'exams' | 'results'>('notices');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
+  const adminData = useAdminData();
   
   const [notices, setNotices] = useState<Notice[]>([]);
   const [exams, setExams] = useState<Exam[]>([]);
@@ -52,74 +55,60 @@ export function NoticesEvents() {
   const [attachments, setAttachments] = useState<{ name: string; url: string }[]>([]);
 
   useEffect(() => {
-    // Load from localStorage
-    const savedNotices = localStorage.getItem('schoolNotices');
-    const savedExams = localStorage.getItem('schoolExams');
-    const savedResults = localStorage.getItem('schoolResults');
+    // Load notices and events from backend
+    const loadData = async () => {
+      try {
+        // Notices are already in adminData, convert to component format
+        const defaultNotices: Notice[] = adminData.notices.map((notice) => ({
+          id: notice.id.toString(),
+          topic: notice.title,
+          description: notice.content,
+          date: notice.date,
+          priority: notice.type === 'Event' ? 'high' : 'medium',
+          type: notice.type,
+          createdAt: notice.date,
+        }));
+        setNotices(defaultNotices);
 
-    if (savedNotices) setNotices(JSON.parse(savedNotices));
-    else {
-      const defaultNotices: Notice[] = [
-        { 
-          id: '1', 
-          topic: 'Holiday Announcement', 
-          description: 'School will remain closed on Nov 24th for Thanksgiving', 
-          date: '2025-11-22', 
-          priority: 'high', 
-          type: 'Holiday',
-          createdAt: new Date().toISOString()
-        },
-        { 
-          id: '2', 
-          topic: 'Fee Payment Reminder', 
-          description: 'Please clear pending fees by end of this month', 
-          date: '2025-11-20', 
-          priority: 'medium', 
-          type: 'Fee',
-          createdAt: new Date().toISOString()
-        },
-      ];
-      setNotices(defaultNotices);
-      localStorage.setItem('schoolNotices', JSON.stringify(defaultNotices));
-    }
+        // Events are already in adminData, convert to component format
+        const defaultExams: Exam[] = adminData.events.map((event) => ({
+          id: event.id.toString(),
+          title: event.title,
+          class: event.venue,
+          startDate: event.date,
+          endDate: event.date,
+          subjects: [event.title],
+          createdAt: event.date,
+        }));
+        setExams(defaultExams);
 
-    if (savedExams) setExams(JSON.parse(savedExams));
-    else {
-      const defaultExams: Exam[] = [
-        { 
-          id: '1', 
-          title: 'Mid-Term Examination', 
-          class: 'All Classes', 
-          startDate: '2025-12-01', 
-          endDate: '2025-12-10', 
-          subjects: ['Math', 'Science', 'English', 'Social Studies'],
-          createdAt: new Date().toISOString()
-        },
-      ];
-      setExams(defaultExams);
-      localStorage.setItem('schoolExams', JSON.stringify(defaultExams));
-    }
-
-    if (savedResults) setResults(JSON.parse(savedResults));
-    else {
-      const defaultResults: Result[] = [
-        { 
-          id: '1', 
-          title: 'Mid-Term Results - Grade 10', 
-          publishDate: '2025-11-15', 
-          class: 'Grade 10', 
-          averageScore: '82%', 
+        // Results - using sample data for now (can be extended with backend endpoint)
+        const defaultResults: Result[] = adminData.students.slice(0, 3).map((student, index) => ({
+          id: (index + 1).toString(),
+          title: `Latest Results - ${student.class ?? 'Class'}`,
+          publishDate: new Date().toISOString(),
+          class: student.class ?? 'Class',
+          averageScore: '85%',
           status: 'Published',
-          createdAt: new Date().toISOString()
-        },
-      ];
-      setResults(defaultResults);
-      localStorage.setItem('schoolResults', JSON.stringify(defaultResults));
-    }
-  }, []);
+          createdAt: new Date().toISOString(),
+        }));
+        setResults(defaultResults);
+      } catch (error) {
+        console.error('Failed to load data:', error);
+      }
+    };
 
-  const saveToStorage = (type: string, data: any[]) => {
-    localStorage.setItem(type, JSON.stringify(data));
+    if (adminData.notices.length > 0 || adminData.events.length > 0) {
+      loadData();
+    }
+  }, [adminData]);
+
+  const refreshData = async () => {
+    // Trigger a page refresh to reload admin data
+    // In a production app, you'd want to use a context refresh function
+    setTimeout(() => {
+      window.location.reload();
+    }, 500);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -165,109 +154,163 @@ export function NoticesEvents() {
     setShowAddModal(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const timestamp = new Date().toISOString();
 
-    if (activeTab === 'notices') {
-      if (!formData.topic || !formData.description) {
-        alert('Please fill in all required fields');
-        return;
-      }
+    try {
+      if (activeTab === 'notices') {
+        if (!formData.topic || !formData.description) {
+          alert('Please fill in all required fields');
+          return;
+        }
 
-      if (editingItem) {
-        const updated = notices.map(n => 
-          n.id === editingItem.id 
-            ? { ...formData, id: editingItem.id, attachments, editedAt: timestamp, createdAt: editingItem.createdAt }
-            : n
-        );
-        setNotices(updated);
-        saveToStorage('schoolNotices', updated);
+        if (editingItem) {
+          // Update notice via backend
+          await apiFetch(`/admin/notices/${editingItem.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({
+              title: formData.topic,
+              content: formData.description,
+              date: formData.date || new Date().toISOString().split('T')[0],
+              type: formData.type || 'General',
+            }),
+          });
+          
+          const updated = notices.map(n => 
+            n.id === editingItem.id 
+              ? { ...formData, id: editingItem.id, attachments, editedAt: timestamp, createdAt: editingItem.createdAt }
+              : n
+          );
+          setNotices(updated);
+        } else {
+          // Create notice via backend
+          const newNotice = await apiFetch('/admin/notices', {
+            method: 'POST',
+            body: JSON.stringify({
+              title: formData.topic,
+              content: formData.description,
+              date: formData.date || new Date().toISOString().split('T')[0],
+              type: formData.type || 'General',
+            }),
+          });
+          
+          const notice: Notice = {
+            id: newNotice.id.toString(),
+            topic: formData.topic,
+            description: formData.description,
+            date: formData.date || new Date().toISOString().split('T')[0],
+            priority: formData.priority || 'medium',
+            type: formData.type || 'General',
+            attachments,
+            createdAt: timestamp
+          };
+          setNotices([...notices, notice]);
+        }
+        await refreshData();
+      } else if (activeTab === 'exams') {
+        if (!formData.title || !formData.class || !formData.startDate || !formData.endDate) {
+          alert('Please fill in all required fields');
+          return;
+        }
+
+        const subjects = formData.subjects ? formData.subjects.split(',').map((s: string) => s.trim()) : [];
+
+        if (editingItem) {
+          // Update event via backend
+          await apiFetch(`/admin/events/${editingItem.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({
+              title: formData.title,
+              date: formData.startDate,
+              time: 'All Day',
+              venue: formData.class,
+            }),
+          });
+          
+          const updated = exams.map(e => 
+            e.id === editingItem.id 
+              ? { ...formData, id: editingItem.id, subjects, editedAt: timestamp, createdAt: editingItem.createdAt }
+              : e
+          );
+          setExams(updated);
+        } else {
+          // Create event via backend
+          const newEvent = await apiFetch('/admin/events', {
+            method: 'POST',
+            body: JSON.stringify({
+              title: formData.title,
+              date: formData.startDate,
+              time: 'All Day',
+              venue: formData.class,
+            }),
+          });
+          
+          const exam: Exam = {
+            id: newEvent.id.toString(),
+            title: formData.title,
+            class: formData.class,
+            startDate: formData.startDate,
+            endDate: formData.endDate,
+            subjects,
+            createdAt: timestamp
+          };
+          setExams([...exams, exam]);
+        }
+        await refreshData();
       } else {
-        const newNotice: Notice = {
-          id: Date.now().toString(),
-          ...formData,
-          attachments,
-          createdAt: timestamp
-        };
-        const updated = [...notices, newNotice];
-        setNotices(updated);
-        saveToStorage('schoolNotices', updated);
-      }
-    } else if (activeTab === 'exams') {
-      if (!formData.title || !formData.class || !formData.startDate || !formData.endDate) {
-        alert('Please fill in all required fields');
-        return;
+        // Results - keep local for now (can be extended with backend endpoint)
+        if (!formData.title || !formData.class) {
+          alert('Please fill in all required fields');
+          return;
+        }
+
+        if (editingItem) {
+          const updated = results.map(r => 
+            r.id === editingItem.id 
+              ? { ...formData, id: editingItem.id, attachments, editedAt: timestamp, createdAt: editingItem.createdAt }
+              : r
+          );
+          setResults(updated);
+        } else {
+          const newResult: Result = {
+            id: Date.now().toString(),
+            ...formData,
+            attachments,
+            createdAt: timestamp
+          };
+          setResults([...results, newResult]);
+        }
       }
 
-      const subjects = formData.subjects ? formData.subjects.split(',').map((s: string) => s.trim()) : [];
-
-      if (editingItem) {
-        const updated = exams.map(e => 
-          e.id === editingItem.id 
-            ? { ...formData, id: editingItem.id, subjects, editedAt: timestamp, createdAt: editingItem.createdAt }
-            : e
-        );
-        setExams(updated);
-        saveToStorage('schoolExams', updated);
-      } else {
-        const newExam: Exam = {
-          id: Date.now().toString(),
-          ...formData,
-          subjects,
-          createdAt: timestamp
-        };
-        const updated = [...exams, newExam];
-        setExams(updated);
-        saveToStorage('schoolExams', updated);
-      }
-    } else {
-      if (!formData.title || !formData.class) {
-        alert('Please fill in all required fields');
-        return;
-      }
-
-      if (editingItem) {
-        const updated = results.map(r => 
-          r.id === editingItem.id 
-            ? { ...formData, id: editingItem.id, attachments, editedAt: timestamp, createdAt: editingItem.createdAt }
-            : r
-        );
-        setResults(updated);
-        saveToStorage('schoolResults', updated);
-      } else {
-        const newResult: Result = {
-          id: Date.now().toString(),
-          ...formData,
-          attachments,
-          createdAt: timestamp
-        };
-        const updated = [...results, newResult];
-        setResults(updated);
-        saveToStorage('schoolResults', updated);
-      }
+      setShowAddModal(false);
+      setEditingItem(null);
+      setFormData({});
+      setAttachments([]);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Failed to save');
     }
-
-    setShowAddModal(false);
-    setEditingItem(null);
-    setFormData({});
-    setAttachments([]);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this item?')) return;
 
-    if (activeTab === 'notices') {
-      const updated = notices.filter(n => n.id !== id);
-      setNotices(updated);
-      saveToStorage('schoolNotices', updated);
-    } else if (activeTab === 'exams') {
-      const updated = exams.filter(e => e.id !== id);
-      setExams(updated);
-      saveToStorage('schoolExams', updated);
-    } else {
-      const updated = results.filter(r => r.id !== id);
-      setResults(updated);
-      saveToStorage('schoolResults', updated);
+    try {
+      if (activeTab === 'notices') {
+        await apiFetch(`/admin/notices/${id}`, { method: 'DELETE' });
+        const updated = notices.filter(n => n.id !== id);
+        setNotices(updated);
+        await refreshData();
+      } else if (activeTab === 'exams') {
+        await apiFetch(`/admin/events/${id}`, { method: 'DELETE' });
+        const updated = exams.filter(e => e.id !== id);
+        setExams(updated);
+        await refreshData();
+      } else {
+        const updated = results.filter(r => r.id !== id);
+        setResults(updated);
+      }
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Failed to delete');
     }
   };
 

@@ -1,19 +1,46 @@
 import { Users, GraduationCap, BookOpen, TrendingUp, UserX, Bell } from 'lucide-react';
 import { useSchoolSettings } from './SchoolSettingsContext';
+import { useAdminData } from './AdminDataContext';
 
 export function StatsCards() {
   const { settings, t } = useSchoolSettings();
+  const data = useAdminData();
   const isDark = settings.theme === 'dark';
 
-  const stats = [
+  const baseStats = [
     {
       title: t('totalStudents'),
-      value: '2,543',
-      change: '+12%',
-      trend: 'up',
       icon: Users,
       color: settings.primaryColor,
+      fallback: '0',
     },
+    {
+      title: t('totalTeachers'),
+      icon: GraduationCap,
+      color: '#10B981',
+      fallback: '0',
+    },
+    {
+      title: t('totalClasses'),
+      icon: BookOpen,
+      color: settings.secondaryColor,
+      fallback: '0',
+    },
+    {
+      title: settings.language === 'ne' ? 'Notices' : 'Active Notices',
+      icon: Bell,
+      color: '#06B6D4',
+      fallback: '0',
+    },
+  ];
+
+  const stats = [
+    ...baseStats.map((stat, index) => ({
+      ...stat,
+      value: data.stats[index]?.value?.toLocaleString() ?? stat.fallback,
+      change: '+0%',
+      trend: 'up',
+    })),
     {
       title: settings.language === 'ne' ? 'आज अनुपस्थित' : 'Absent Today',
       value: '87',
@@ -23,36 +50,12 @@ export function StatsCards() {
       color: '#EF4444',
     },
     {
-      title: t('totalTeachers'),
-      value: '142',
-      change: '+3%',
-      trend: 'up',
-      icon: GraduationCap,
-      color: '#10B981',
-    },
-    {
-      title: t('totalClasses'),
-      value: '48',
-      change: '+5%',
-      trend: 'up',
-      icon: BookOpen,
-      color: settings.secondaryColor,
-    },
-    {
       title: t('avgAttendance'),
       value: '94.2%',
       change: '+2.1%',
       trend: 'up',
       icon: TrendingUp,
       color: '#F59E0B',
-    },
-    {
-      title: settings.language === 'ne' ? 'बाँकी सूचनाहरू' : 'Pending Notices',
-      value: '5',
-      change: settings.language === 'ne' ? '२ नयाँ' : '2 new',
-      trend: 'up',
-      icon: Bell,
-      color: '#06B6D4',
     },
   ];
 

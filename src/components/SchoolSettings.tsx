@@ -241,7 +241,8 @@ export function SchoolSettings() {
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input
                       type="checkbox"
-                      checked={false}
+                      defaultChecked={false}
+                      readOnly
                       className="sr-only peer"
                     />
                     <div 

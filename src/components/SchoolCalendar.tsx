@@ -80,61 +80,56 @@ export function SchoolCalendar() {
   });
 
   useEffect(() => {
-    // Load events from localStorage
-    const savedEvents = localStorage.getItem('schoolCalendarEvents');
-    if (savedEvents) {
-      setEvents(JSON.parse(savedEvents));
-    } else {
-      // Sample events
-      const sampleEvents: Event[] = [
-        {
-          id: '1',
-          title: 'Thanksgiving Holiday',
-          description: 'School remains closed',
-          date: '2025-11-27',
-          category: 'Holiday',
-          categoryColor: '#EF4444',
-          isFullDay: true,
-          isRepeat: false,
-          targetAudience: ['all'],
-          createdAt: new Date().toISOString(),
-        },
-        {
-          id: '2',
-          title: 'Mid-Term Exams Start',
-          description: 'Grade 9-12 mid-term examinations',
-          date: '2025-12-01',
-          category: 'Exam',
-          categoryColor: '#3B82F6',
-          isFullDay: true,
-          isRepeat: false,
-          targetAudience: ['students'],
-          classes: ['Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'],
-          createdAt: new Date().toISOString(),
-        },
-        {
-          id: '3',
-          title: 'Parent-Teacher Meeting',
-          description: 'Annual PTM for all classes',
-          date: '2025-12-05',
-          startTime: '10:00',
-          endTime: '14:00',
-          category: 'Meeting',
-          categoryColor: '#8B5CF6',
-          isFullDay: false,
-          isRepeat: false,
-          targetAudience: ['teachers', 'parents'],
-          createdAt: new Date().toISOString(),
-        },
-      ];
-      setEvents(sampleEvents);
-      localStorage.setItem('schoolCalendarEvents', JSON.stringify(sampleEvents));
-    }
+    // Load events from backend
+    const loadEvents = async () => {
+      try {
+        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:4000/api'}/admin/dashboard`);
+        const data = await response.json();
+        
+        // Convert backend events to calendar format
+        const backendEvents: Event[] = (data.events || []).map((event: any) => {
+          const eventDate = new Date(event.date);
+          const category = event.title.toLowerCase().includes('holiday') ? 'Holiday' :
+                          event.title.toLowerCase().includes('exam') ? 'Exam' :
+                          event.title.toLowerCase().includes('sport') ? 'Sports' :
+                          event.title.toLowerCase().includes('meeting') ? 'Meeting' : 'Festival';
+          
+          const categoryColor = category === 'Holiday' ? '#EF4444' :
+                               category === 'Exam' ? '#3B82F6' :
+                               category === 'Sports' ? '#10B981' :
+                               category === 'Meeting' ? '#8B5CF6' : '#F59E0B';
+          
+          return {
+            id: event.id.toString(),
+            title: event.title,
+            description: event.venue || '',
+            date: event.date,
+            startTime: event.time || 'All Day',
+            endTime: '',
+            category,
+            categoryColor,
+            isFullDay: !event.time || event.time === 'All Day',
+            isRepeat: false,
+            targetAudience: ['all'],
+            createdAt: event.createdAt || new Date().toISOString(),
+          };
+        });
+        
+        setEvents(backendEvents);
+      } catch (error) {
+        console.error('Failed to load events:', error);
+        // Keep empty array on error
+        setEvents([]);
+      }
+    };
+    
+    loadEvents();
   }, []);
 
   const saveEvents = (updatedEvents: Event[]) => {
     setEvents(updatedEvents);
-    localStorage.setItem('schoolCalendarEvents', JSON.stringify(updatedEvents));
+    // Save to backend would go here - for now just update local state
+    // In production, you'd want to call an API endpoint to save the event
   };
 
   const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
@@ -149,6 +144,38 @@ export function SchoolCalendar() {
 
   const nextMonth = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+  };
+
+  const previousWeek = () => {
+    const newDate = new Date(currentDate);
+    newDate.setDate(currentDate.getDate() - 7);
+    setCurrentDate(newDate);
+  };
+
+  const nextWeek = () => {
+    const newDate = new Date(currentDate);
+    newDate.setDate(currentDate.getDate() + 7);
+    setCurrentDate(newDate);
+  };
+
+  const previousDay = () => {
+    const newDate = new Date(currentDate);
+    newDate.setDate(currentDate.getDate() - 1);
+    setCurrentDate(newDate);
+  };
+
+  const nextDay = () => {
+    const newDate = new Date(currentDate);
+    newDate.setDate(currentDate.getDate() + 1);
+    setCurrentDate(newDate);
+  };
+
+  const previousYear = () => {
+    setCurrentDate(new Date(currentDate.getFullYear() - 1, currentDate.getMonth(), 1));
+  };
+
+  const nextYear = () => {
+    setCurrentDate(new Date(currentDate.getFullYear() + 1, currentDate.getMonth(), 1));
   };
 
   const handleAddEvent = () => {
@@ -357,6 +384,147 @@ export function SchoolCalendar() {
     return days;
   };
 
+  const renderWeekView = () => {
+    const weekStart = new Date(currentDate);
+    weekStart.setDate(currentDate.getDate() - currentDate.getDay());
+    const days = [];
+    
+    for (let i = 0; i < 7; i++) {
+      const dayDate = new Date(weekStart);
+      dayDate.setDate(weekStart.getDate() + i);
+      const dateStr = `${dayDate.getFullYear()}-${String(dayDate.getMonth() + 1).padStart(2, '0')}-${String(dayDate.getDate()).padStart(2, '0')}`;
+      const dayEvents = events.filter(event => {
+        if (event.date !== dateStr) return false;
+        if (filterCategory !== 'all' && event.category !== filterCategory) return false;
+        if (filterAudience !== 'all' && !event.targetAudience.includes(filterAudience)) return false;
+        return true;
+      });
+      const isToday = dayDate.toDateString() === new Date().toDateString();
+      
+      days.push(
+        <div
+          key={i}
+          className={`p-3 min-h-[200px] border border-gray-200 ${isToday ? 'bg-blue-50 border-blue-300' : 'bg-white'} hover:bg-gray-50 transition-colors`}
+        >
+          <div className={`mb-2 font-semibold ${isToday ? 'text-blue-600' : 'text-gray-700'}`}>
+            {dayDate.getDate()}
+          </div>
+          <div className="space-y-1">
+            {dayEvents.map((event) => (
+              <div
+                key={event.id}
+                className="text-xs px-2 py-1 rounded cursor-pointer hover:opacity-80 transition-opacity"
+                style={{ backgroundColor: event.categoryColor + '20', color: event.categoryColor }}
+                onClick={() => openEditModal(event)}
+              >
+                {event.title}
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+    
+    return days;
+  };
+
+  const renderDayView = () => {
+    const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
+    const dayEvents = events.filter(event => {
+      if (event.date !== dateStr) return false;
+      if (filterCategory !== 'all' && event.category !== filterCategory) return false;
+      if (filterAudience !== 'all' && !event.targetAudience.includes(filterAudience)) return false;
+      return true;
+    });
+
+    const hours = Array.from({ length: 24 }, (_, i) => i);
+    
+    return (
+      <div className="space-y-2">
+        {hours.map((hour) => {
+          const hourEvents = dayEvents.filter(event => {
+            if (event.isFullDay) return false;
+            const eventStart = event.startTime ? parseInt(event.startTime.split(':')[0]) : 0;
+            return eventStart === hour;
+          });
+          
+          return (
+            <div key={hour} className="flex border-b border-gray-100 pb-2">
+              <div className="w-20 text-sm text-gray-600 font-medium">
+                {hour.toString().padStart(2, '0')}:00
+              </div>
+              <div className="flex-1 space-y-2">
+                {hourEvents.map((event) => (
+                  <div
+                    key={event.id}
+                    className="p-3 rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
+                    style={{ backgroundColor: event.categoryColor + '20', borderLeft: `4px solid ${event.categoryColor}` }}
+                    onClick={() => openEditModal(event)}
+                  >
+                    <div className="font-semibold" style={{ color: event.categoryColor }}>
+                      {event.title}
+                    </div>
+                    {event.startTime && event.endTime && (
+                      <div className="text-xs text-gray-600 mt-1">
+                        {event.startTime} - {event.endTime}
+                      </div>
+                    )}
+                    {event.description && (
+                      <div className="text-sm text-gray-700 mt-1">{event.description}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+        {dayEvents.filter(e => e.isFullDay).map((event) => (
+          <div
+            key={event.id}
+            className="p-3 rounded-lg cursor-pointer hover:opacity-80 transition-opacity border-l-4"
+            style={{ backgroundColor: event.categoryColor + '20', borderLeftColor: event.categoryColor }}
+            onClick={() => openEditModal(event)}
+          >
+            <div className="font-semibold" style={{ color: event.categoryColor }}>
+              {event.title} (All Day)
+            </div>
+            {event.description && (
+              <div className="text-sm text-gray-700 mt-1">{event.description}</div>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderYearMonthView = (monthIndex: number) => {
+    const monthDate = new Date(currentDate.getFullYear(), monthIndex, 1);
+    const firstDay = monthDate.getDay();
+    const daysInMonth = new Date(currentDate.getFullYear(), monthIndex + 1, 0).getDate();
+    const days = [];
+    
+    for (let i = 0; i < firstDay; i++) {
+      days.push(<div key={`empty-${i}`} className="text-center"></div>);
+    }
+    
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = `${currentDate.getFullYear()}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const dayEvents = events.filter(e => e.date === dateStr);
+      const hasEvent = dayEvents.length > 0;
+      
+      days.push(
+        <div
+          key={day}
+          className={`text-center text-xs p-1 ${hasEvent ? 'bg-blue-100 rounded' : ''}`}
+        >
+          {day}
+        </div>
+      );
+    }
+    
+    return days;
+  };
+
   return (
     <>
       <div className="mb-8">
@@ -369,16 +537,31 @@ export function SchoolCalendar() {
         <div className="flex flex-col lg:flex-row gap-4 justify-between items-start lg:items-center mb-4">
           <div className="flex items-center gap-3">
             <button
-              onClick={previousMonth}
+              onClick={
+                view === 'month' ? previousMonth :
+                view === 'week' ? previousWeek :
+                view === 'day' ? previousDay :
+                previousYear
+              }
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
             >
               <ChevronLeft className="w-5 h-5 text-gray-600" />
             </button>
             <h2 className="text-gray-900 min-w-[180px] text-center">
-              {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
+              {view === 'year' 
+                ? currentDate.getFullYear().toString()
+                : view === 'day'
+                ? currentDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+                : `${monthNames[currentDate.getMonth()]} ${currentDate.getFullYear()}`
+              }
             </h2>
             <button
-              onClick={nextMonth}
+              onClick={
+                view === 'month' ? nextMonth :
+                view === 'week' ? nextWeek :
+                view === 'day' ? nextDay :
+                nextYear
+              }
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
             >
               <ChevronRight className="w-5 h-5 text-gray-600" />
@@ -500,10 +683,48 @@ export function SchoolCalendar() {
           </div>
         )}
 
-        {view !== 'month' && (
-          <div className="p-8 text-center text-gray-500">
-            <CalendarIcon className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-            <p>{view.charAt(0).toUpperCase() + view.slice(1)} view coming soon...</p>
+        {view === 'week' && (
+          <div className="p-4">
+            <div className="grid grid-cols-7 gap-1">
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+                <div key={day} className="p-2 text-center text-gray-600 font-semibold border-b border-gray-200">
+                  {day}
+                </div>
+              ))}
+              {renderWeekView()}
+            </div>
+          </div>
+        )}
+
+        {view === 'day' && (
+          <div className="p-4">
+            <div className="border-b border-gray-200 pb-2 mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {currentDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+              </h3>
+            </div>
+            {renderDayView()}
+          </div>
+        )}
+
+        {view === 'year' && (
+          <div className="p-4">
+            <div className="grid grid-cols-4 gap-4">
+              {Array.from({ length: 12 }, (_, i) => {
+                const monthDate = new Date(currentDate.getFullYear(), i, 1);
+                return (
+                  <div key={i} className="border border-gray-200 rounded-lg p-3">
+                    <h4 className="font-semibold text-gray-900 mb-2">{monthDate.toLocaleDateString('en-US', { month: 'long' })}</h4>
+                    <div className="grid grid-cols-7 gap-1 text-xs">
+                      {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day) => (
+                        <div key={day} className="text-center text-gray-500">{day}</div>
+                      ))}
+                      {renderYearMonthView(i)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
