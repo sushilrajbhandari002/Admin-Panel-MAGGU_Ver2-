@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Search, Plus, Download, Edit, Trash2, Eye, Mail, Phone, X, Save } from 'lucide-react';
+import { Search, Plus, Download, Edit, Trash2, Eye, Mail, Phone, X, Save, EyeOff } from 'lucide-react';
 import { useAdminData } from './AdminDataContext';
 import { apiFetch } from '../lib/api';
 import { toast } from 'sonner@2.0.3';
+import { validateNepalPhone, validateStrongPassword } from '../lib/validation';
 
 interface Teacher {
   id: number;
@@ -19,6 +20,18 @@ interface Teacher {
   isClassTeacher?: boolean;
   classTeacherOf?: string;
   teachingClasses?: string[];
+  teacherId?: string | null;
+}
+
+interface ClassWithSections {
+  id: number;
+  name: string;
+  sections: { id: number; name: string }[];
+}
+
+interface SubjectDto {
+  id: number;
+  name: string;
 }
 
 export function TeacherManagement() {
@@ -35,20 +48,36 @@ export function TeacherManagement() {
     phone: '',
     address: '',
     teacherId: '',
+    isClassTeacher: false,
+    classTeacherOf: '',
   });
+  const [availableClasses, setAvailableClasses] = useState<ClassWithSections[]>([]);
+  const [availableSubjects, setAvailableSubjects] = useState<SubjectDto[]>([]);
+  const [subjectAssignments, setSubjectAssignments] = useState<
+    { classId: number | ''; subjectId: number | '' }[]
+  >([{ classId: '', subjectId: '' }]);
+  const [showPassword, setShowPassword] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string | null>>({});
+  const [teacherIdStatus, setTeacherIdStatus] = useState<{
+    checkedValue: string;
+    available: boolean | null;
+    suggestions: string[];
+  }>({ checkedValue: '', available: null, suggestions: [] });
+  const [teacherIdChecking, setTeacherIdChecking] = useState(false);
+
   const adminData = useAdminData();
 
   const mapTeachers = (teacherData: typeof adminData.teachers): Teacher[] =>
     teacherData.map((teacher) => {
       const classesArray = Array.isArray(teacher.classes) ? teacher.classes : [];
       const subjectArray = teacher.subject ? [teacher.subject] : [];
-      const subjects = classesArray.length > 0 ? classesArray : subjectArray;
-      
+      const subjects = subjectArray.length > 0 ? subjectArray : classesArray;
+
       return {
         id: teacher.id,
         name: teacher.name,
         role: 'Teacher',
-        subjects: subjects,
+        subjects,
         phone: teacher.phone ?? '',
         email: teacher.email,
         qualification: 'B.Ed.',
@@ -59,6 +88,7 @@ export function TeacherManagement() {
         isClassTeacher: classesArray.length > 0,
         classTeacherOf: classesArray[0],
         teachingClasses: classesArray,
+        teacherId: teacher.teacherId ?? null,
       };
     });
 
@@ -67,6 +97,19 @@ export function TeacherManagement() {
   useEffect(() => {
     setTeachers(mapTeachers(adminData.teachers));
   }, [adminData.teachers]);
+
+  useEffect(() => {
+    apiFetch<ClassWithSections[]>('/admin/classes')
+      .then(setAvailableClasses)
+      .catch(() => {
+        // ignore, UI will still work with manual class fields if needed
+      });
+    apiFetch<SubjectDto[]>('/admin/subjects')
+      .then(setAvailableSubjects)
+      .catch(() => {
+        // optional
+      });
+  }, []);
 
   const filteredTeachers = teachers.filter(teacher =>
     teacher.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -82,7 +125,7 @@ export function TeacherManagement() {
         method: 'DELETE',
       });
       toast.success('Teacher deleted successfully!');
-      window.location.reload();
+      setTeachers((prev) => prev.filter((t) => t.id !== id));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to delete teacher');
     }
@@ -125,6 +168,20 @@ export function TeacherManagement() {
   const handleSaveEdit = async () => {
     if (!editingTeacher) return;
 
+    if (!editingTeacher.name || !editingTeacher.email) {
+      toast.error('Name and email are required');
+      return;
+    }
+
+    const newErrors: Record<string, string | null> = {};
+    const phoneError = validateNepalPhone(editingTeacher.phone);
+    if (phoneError) newErrors.phone = phoneError;
+    setErrors(newErrors);
+    if (Object.values(newErrors).some(Boolean)) {
+      toast.error('Please fix the highlighted errors');
+      return;
+    }
+
     try {
       const payload: any = {
         name: editingTeacher.name,
@@ -140,8 +197,20 @@ export function TeacherManagement() {
 
       toast.success('Teacher updated successfully!');
       setShowEditModal(false);
+      setTeachers((prev) =>
+        prev.map((t) =>
+          t.id === editingTeacher.id
+            ? {
+                ...t,
+                name: payload.name,
+                email: payload.email,
+                phone: payload.phone,
+                status: editingTeacher.status,
+              }
+            : t
+        )
+      );
       setEditingTeacher(null);
-      window.location.reload();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to update teacher');
     }
@@ -157,6 +226,46 @@ export function TeacherManagement() {
     if (!editingTeacher) return;
     const classes = value.split(',').map(s => s.trim()).filter(s => s);
     setEditingTeacher({ ...editingTeacher, teachingClasses: classes });
+  };
+
+  const handleSubjectAssignmentChange = (
+    index: number,
+    field: 'classId' | 'subjectId',
+    value: number | ''
+  ) => {
+    setSubjectAssignments((prev) =>
+      prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
+    );
+  };
+
+  const addSubjectAssignmentRow = () => {
+    setSubjectAssignments((prev) => [...prev, { classId: '', subjectId: '' }]);
+  };
+
+  const removeSubjectAssignmentRow = (index: number) => {
+    setSubjectAssignments((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const checkTeacherIdAvailability = async (value: string) => {
+    if (!value) {
+      setTeacherIdStatus({ checkedValue: '', available: null, suggestions: [] });
+      return;
+    }
+    setTeacherIdChecking(true);
+    try {
+      const result = await apiFetch<{ available: boolean; suggestions: string[] }>(
+        `/admin/teacher-id/availability?teacherId=${encodeURIComponent(value)}`
+      );
+      setTeacherIdStatus({
+        checkedValue: value,
+        available: result.available,
+        suggestions: result.suggestions,
+      });
+    } catch {
+      setTeacherIdStatus({ checkedValue: value, available: null, suggestions: [] });
+    } finally {
+      setTeacherIdChecking(false);
+    }
   };
 
   return (
@@ -220,6 +329,9 @@ export function TeacherManagement() {
 
             <h3 className="text-gray-900 mb-1">{teacher.name}</h3>
             <p className="text-blue-600 text-sm mb-3">{teacher.role}</p>
+            {teacher.teacherId && (
+              <p className="text-xs text-gray-500 mb-2">Teacher ID: {teacher.teacherId}</p>
+            )}
 
             {teacher.isClassTeacher && (
               <div className="mb-3 px-2 sm:px-3 py-1 bg-purple-50 text-purple-700 rounded-lg text-xs sm:text-sm inline-block">
@@ -613,13 +725,32 @@ export function TeacherManagement() {
               className="space-y-4"
               onSubmit={async (e) => {
                 e.preventDefault();
-                if (!formData.name || !formData.email || !formData.password) {
-                  toast.error('Please fill in all required fields');
+                const newErrors: Record<string, string | null> = {};
+                if (!formData.name) newErrors.name = 'Name is required';
+                if (!formData.email) newErrors.email = 'Email is required';
+                const phoneError = validateNepalPhone(formData.phone);
+                if (phoneError) newErrors.phone = phoneError;
+                const pwError = validateStrongPassword(formData.password);
+                if (pwError) newErrors.password = pwError;
+                setErrors(newErrors);
+                if (Object.values(newErrors).some(Boolean)) {
+                  toast.error('Please fix the highlighted errors');
                   return;
                 }
 
                 setIsSubmitting(true);
                 try {
+                  const assignedClasses: string[] = [];
+                  if (formData.isClassTeacher && formData.classTeacherOf) {
+                    assignedClasses.push(formData.classTeacherOf);
+                  }
+                  subjectAssignments.forEach((row) => {
+                    const cls = availableClasses.find((c) => c.id === row.classId);
+                    if (cls && !assignedClasses.includes(cls.name)) {
+                      assignedClasses.push(cls.name);
+                    }
+                  });
+
                   const payload: any = {
                     name: formData.name,
                     email: formData.email,
@@ -628,14 +759,15 @@ export function TeacherManagement() {
                     phone: formData.phone || undefined,
                     address: formData.address || undefined,
                     teacherId: formData.teacherId || undefined,
+                    assignedClasses: assignedClasses.length ? assignedClasses : undefined,
                   };
 
-                  await apiFetch('/admin/users', {
+                  const created = await apiFetch<any>('/admin/users', {
                     method: 'POST',
                     body: JSON.stringify(payload),
                   });
 
-                  // Reset form and reload data
+                  // Reset form and update UI
                   setFormData({
                     name: '',
                     email: '',
@@ -643,10 +775,32 @@ export function TeacherManagement() {
                     phone: '',
                     address: '',
                     teacherId: '',
+                    isClassTeacher: false,
+                    classTeacherOf: '',
                   });
+                  setSubjectAssignments([{ classId: '', subjectId: '' }]);
                   setIsAddDialogOpen(false);
-                  // Refresh admin data
-                  window.location.reload();
+                  setTeachers((prev) => [
+                    ...prev,
+                    {
+                      id: created.id,
+                      name: created.name,
+                      role: 'Teacher',
+                      subjects: [],
+                      phone: created.phone ?? '',
+                      email: created.email,
+                      qualification: 'B.Ed.',
+                      experience: '5 years',
+                      joinDate: '2018-01-01',
+                      status: created.status ?? 'Active',
+                      post: created.subject,
+                      isClassTeacher: !!formData.isClassTeacher,
+                      classTeacherOf: formData.classTeacherOf || undefined,
+                      teachingClasses: assignedClasses,
+                      teacherId: created.teacherId ?? (formData.teacherId || ''),
+
+                    },
+                  ]);
                   toast.success('Teacher created successfully!');
                 } catch (error) {
                   toast.error(error instanceof Error ? error.message : 'Failed to create teacher');
@@ -666,6 +820,7 @@ export function TeacherManagement() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
                 />
+                {errors.name && <p className="mt-1 text-xs text-red-600">{errors.name}</p>}
               </div>
               <div>
                 <label htmlFor="teacher-email" className="text-gray-700 mb-2 block">Email *</label>
@@ -681,27 +836,37 @@ export function TeacherManagement() {
               </div>
               <div>
                 <label htmlFor="teacher-password" className="text-gray-700 mb-2 block">Password *</label>
-                <input
-                  id="teacher-password"
-                  type="password"
-                  placeholder="Enter password (min 6 characters)"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                  minLength={6}
-                />
+                <div className="relative">
+                  <input
+                    id="teacher-password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Min 8 chars, upper, lower, number, special"
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-500"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {errors.password && <p className="mt-1 text-xs text-red-600">{errors.password}</p>}
               </div>
               <div>
                 <label htmlFor="teacher-phone" className="text-gray-700 mb-2 block">Phone</label>
                 <input
                   id="teacher-phone"
                   type="tel"
-                  placeholder="Enter phone number"
+                  placeholder="e.g., +97798..., 98..., 97..., 96..."
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+                {errors.phone && <p className="mt-1 text-xs text-red-600">{errors.phone}</p>}
               </div>
               <div>
                 <label htmlFor="teacher-address" className="text-gray-700 mb-2 block">Address</label>
@@ -721,9 +886,153 @@ export function TeacherManagement() {
                   type="text"
                   placeholder="Enter teacher ID"
                   value={formData.teacherId}
-                  onChange={(e) => setFormData({ ...formData, teacherId: e.target.value })}
+                  onChange={(e) => {
+                    setFormData({ ...formData, teacherId: e.target.value });
+                    setTeacherIdStatus({ checkedValue: '', available: null, suggestions: [] });
+                  }}
+                  onBlur={(e) => checkTeacherIdAvailability(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+                {formData.teacherId && (
+                  <p className="mt-1 text-xs">
+                    {teacherIdChecking && <span className="text-gray-500">Checking availability...</span>}
+                    {!teacherIdChecking && teacherIdStatus.checkedValue === formData.teacherId && (
+                      <>
+                        {teacherIdStatus.available === true && (
+                          <span className="text-green-600">ID is available</span>
+                        )}
+                        {teacherIdStatus.available === false && (
+                          <span className="text-red-600">ID already taken</span>
+                        )}
+                      </>
+                    )}
+                  </p>
+                )}
+                {teacherIdStatus.available === false &&
+                  teacherIdStatus.suggestions.length > 0 &&
+                  teacherIdStatus.checkedValue === formData.teacherId && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      <span className="text-xs text-gray-500 mr-1">Suggestions:</span>
+                      {teacherIdStatus.suggestions.map((sug) => (
+                        <button
+                          key={sug}
+                          type="button"
+                          onClick={() => {
+                            setFormData({ ...formData, teacherId: sug });
+                            checkTeacherIdAvailability(sug);
+                          }}
+                          className="px-2 py-1 rounded-full text-xs bg-blue-50 text-blue-700"
+                        >
+                          {sug}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+              </div>
+
+              {/* Class Teacher toggle and class selection */}
+              <div className="border border-gray-200 rounded-lg p-4">
+                <label className="flex items-center gap-2 mb-3">
+                  <input
+                    type="checkbox"
+                    checked={formData.isClassTeacher}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        isClassTeacher: e.target.checked,
+                      }))
+                    }
+                    className="w-4 h-4 text-blue-600"
+                  />
+                  <span className="text-gray-700">Is Class Teacher?</span>
+                </label>
+                {formData.isClassTeacher && (
+                  <div>
+                    <label className="text-gray-700 text-sm mb-2 block">Class</label>
+                    <select
+                      value={formData.classTeacherOf}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, classTeacherOf: e.target.value }))
+                      }
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select a class</option>
+                      {availableClasses.map((cls) => (
+                        <option key={cls.id} value={cls.name}>
+                          {cls.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              {/* Subject assignments */}
+              <div>
+                <label className="text-gray-700 mb-2 block">Subject Assignments</label>
+                <p className="text-xs text-gray-500 mb-2">
+                  Select class and subject combinations. You can add multiple rows.
+                </p>
+                <div className="space-y-2">
+                  {subjectAssignments.map((row, index) => (
+                    <div key={index} className="grid grid-cols-2 gap-2">
+                      <select
+                        value={row.classId}
+                        onChange={(e) =>
+                          handleSubjectAssignmentChange(
+                            index,
+                            'classId',
+                            e.target.value ? Number(e.target.value) : ''
+                          )
+                        }
+                        className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Class</option>
+                        {availableClasses.map((cls) => (
+                          <option key={cls.id} value={cls.id}>
+                            {cls.name}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="flex gap-2">
+                        <select
+                          value={row.subjectId}
+                          onChange={(e) =>
+                            handleSubjectAssignmentChange(
+                              index,
+                              'subjectId',
+                              e.target.value ? Number(e.target.value) : ''
+                            )
+                          }
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="">Subject</option>
+                          {availableSubjects.map((subj) => (
+                            <option key={subj.id} value={subj.id}>
+                              {subj.name}
+                            </option>
+                          ))}
+                        </select>
+                        {subjectAssignments.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeSubjectAssignmentRow(index)}
+                            className="px-2 py-2 text-red-600 hover:bg-red-50 rounded-lg"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={addSubjectAssignmentRow}
+                  className="mt-2 text-sm text-blue-600 hover:text-blue-700"
+                >
+                  + Add class–subject combination
+                </button>
               </div>
               <div className="flex gap-3 mt-6">
                 <button

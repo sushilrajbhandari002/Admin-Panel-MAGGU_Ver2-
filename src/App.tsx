@@ -9,6 +9,8 @@ import { Reports } from './components/Reports';
 import { SchoolProfile } from './components/SchoolProfile';
 import { SchoolSettings } from './components/SchoolSettings';
 import { Login } from './components/Login';
+import { ClassManagement } from './components/ClassManagement';
+import { RoleManagement } from './components/RoleManagement';
 import { SchoolSettingsProvider, useSchoolSettings } from './components/SchoolSettingsContext';
 import { AdminDataProvider, type AdminDashboardData } from './components/AdminDataContext';
 import { apiFetch } from './lib/api';
@@ -82,10 +84,14 @@ function AppContent({ activeTab, setActiveTab, onLogout }: { activeTab: string; 
     switch (activeTab) {
       case 'dashboard':
         return <Dashboard />;
+      case 'classes':
+        return <ClassManagement />;
       case 'students':
         return <StudentManagement />;
       case 'teachers':
         return <TeacherManagement />;
+      case 'roles':
+        return <RoleManagement />;
       case 'notices':
         return <NoticesEvents />;
       case 'calendar':

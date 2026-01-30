@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, GraduationCap, Bell, Calendar, BarChart3, School, Settings } from 'lucide-react';
+import { LayoutDashboard, Users, GraduationCap, Bell, Calendar, BarChart3, School, Settings, Layers3, BadgeCheck } from 'lucide-react';
 import { useSchoolSettings } from './SchoolSettingsContext';
 
 interface SidebarProps {
@@ -12,8 +12,10 @@ export function Sidebar({ activeTab, setActiveTab, onLogout }: SidebarProps) {
 
   const menuItems = [
     { id: 'dashboard', label: t('dashboard'), icon: LayoutDashboard },
+    { id: 'classes', label: t('classes') ?? 'Classes', icon: School },
     { id: 'students', label: t('students'), icon: Users },
     { id: 'teachers', label: t('teachers'), icon: GraduationCap },
+    { id: 'roles', label: t('roles') ?? 'Roles', icon: BadgeCheck },
     { id: 'notices', label: t('noticesEvents'), icon: Bell },
     { id: 'calendar', label: t('calendar'), icon: Calendar },
     { id: 'reports', label: t('reports'), icon: BarChart3 },
@@ -46,10 +48,18 @@ export function Sidebar({ activeTab, setActiveTab, onLogout }: SidebarProps) {
       <div className={`${settings.sidebarType === 'mini' ? 'p-4' : 'p-6'}`}>
         <div className={`flex ${settings.sidebarType === 'mini' ? 'flex-col items-center' : 'items-center gap-2'} mb-8`}>
           <div 
-            className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" 
+            className="w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0" 
             style={{ backgroundColor: settings.primaryColor }}
           >
-            <GraduationCap className="w-6 h-6 text-white" />
+            {settings.schoolLogo ? (
+              <img
+                src={settings.schoolLogo}
+                alt={t('schoolName')}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <GraduationCap className="w-6 h-6 text-white" />
+            )}
           </div>
           {settings.sidebarType !== 'mini' && (
             <div>

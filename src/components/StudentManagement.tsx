@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Search, Filter, Plus, Download, Edit, Trash2, Eye, Upload, User, X } from 'lucide-react';
+import { Search, Filter, Plus, Download, Edit, Trash2, Eye, Upload, User, X, EyeOff } from 'lucide-react';
 import { useSchoolSettings } from './SchoolSettingsContext';
 import { useThemeStyles } from './useThemeStyles';
 import { useAdminData } from './AdminDataContext';
 import { apiFetch } from '../lib/api';
 import { toast } from 'sonner@2.0.3';
+import { validateNepalPhone, validateStrongPassword } from '../lib/validation';
+import * as XLSX from 'xlsx';
 
 interface Student {
   id: number;
@@ -26,7 +28,8 @@ export function StudentManagement() {
   const theme = useThemeStyles();
   const adminData = useAdminData();
   const [selectedClass, setSelectedClass] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchName, setSearchName] = useState('');
+  const [searchRoll, setSearchRoll] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<number | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importClass, setImportClass] = useState('');
@@ -35,6 +38,10 @@ export function StudentManagement() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [availableClasses, setAvailableClasses] = useState<string[]>([]);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showEditPassword, setShowEditPassword] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -49,14 +56,31 @@ export function StudentManagement() {
     setStudents(adminData.students as Student[]);
   }, [adminData.students]);
 
-  const classes = ['all', ...Array.from(new Set(students.map((student) => student.class ?? 'Unknown')))];
+  useEffect(() => {
+    apiFetch<Array<{ id: number; name: string }>>('/admin/classes')
+      .then((cls) => {
+        setAvailableClasses(cls.map((c) => c.name));
+      })
+      .catch(() => {
+        // fallback to classes from students if API fails
+        const derived = Array.from(new Set(students.map((s) => s.class ?? 'Unknown'))).filter(
+          (c) => c !== 'Unknown'
+        );
+        setAvailableClasses(derived);
+      });
+  }, [students]);
+
+  const classes = ['all', ...availableClasses];
 
   const filteredStudents = students.filter(student => {
-    const studentClass = student.class ?? 'Unknown';
+    const studentClass = student.class ?? '';
     const matchesClass = selectedClass === 'all' || studentClass === selectedClass;
-    const matchesSearch = student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         student.rollNo.includes(searchQuery);
-    return matchesClass && matchesSearch;
+    const matchesName =
+      !searchName ||
+      student.name.toLowerCase().includes(searchName.toLowerCase());
+    const matchesRoll =
+      !searchRoll || (student.rollNo ?? '').toLowerCase().includes(searchRoll.toLowerCase());
+    return matchesClass && matchesName && matchesRoll;
   });
 
   const handleDeleteStudent = async (id: number) => {
@@ -67,7 +91,7 @@ export function StudentManagement() {
         method: 'DELETE',
       });
       toast.success('Student deleted successfully!');
-      window.location.reload();
+      setStudents((prev) => prev.filter((s) => s.id !== id));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to delete student');
     }
@@ -89,8 +113,22 @@ export function StudentManagement() {
 
   const handleSaveEdit = async () => {
     if (!editingStudent) return;
-    if (!formData.name || !formData.email) {
-      toast.error('Please fill in all required fields');
+    const newErrors: Record<string, string | null> = {};
+    if (!formData.name) {
+      newErrors.name = 'Name is required';
+    }
+    if (!formData.email) {
+      newErrors.email = 'Email is required';
+    }
+    const phoneError = validateNepalPhone(formData.phone);
+    if (phoneError) newErrors.phone = phoneError;
+    if (formData.password) {
+      const pwError = validateStrongPassword(formData.password);
+      if (pwError) newErrors.password = pwError;
+    }
+    setErrors(newErrors);
+    if (Object.values(newErrors).some(Boolean)) {
+      toast.error('Please fix the highlighted errors');
       return;
     }
 
@@ -116,9 +154,23 @@ export function StudentManagement() {
       });
 
       toast.success('Student updated successfully!');
+      setStudents((prev) =>
+        prev.map((s) =>
+          s.id === editingStudent.id
+            ? {
+                ...s,
+                name: payload.name,
+                email: payload.email,
+                phone: payload.phone ?? '',
+                address: payload.address ?? '',
+                class: payload.class ?? s.class,
+                rollNo: payload.rollNumber ?? s.rollNo,
+              }
+            : s
+        )
+      );
       setShowEditModal(false);
       setEditingStudent(null);
-      window.location.reload();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to update student');
     } finally {
@@ -131,41 +183,76 @@ export function StudentManagement() {
     if (!file) return;
 
     if (!importClass) {
-      alert('Please select a class first!');
+      toast.error('Please select a class first');
       return;
     }
 
-    // Simulate Excel/CSV parsing
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
-        // In a real application, you would use a library like xlsx or papaparse
-        // For now, we'll simulate adding students
-        alert(`Excel file "${file.name}" imported successfully for ${importClass}!`);
-        
-        // Example: Add a sample imported student
-        const newStudent: Student = {
-          id: Date.now(),
-          name: 'Imported Student',
-          class: importClass,
-          rollNo: `IMP${Date.now().toString().slice(-4)}`,
-          phone: '555-9999',
-          email: 'imported@email.com',
-          guardian: 'Guardian Name',
-          address: 'Imported Address',
-          status: 'Active',
-          dateOfBirth: '2008-01-01',
-          admissionDate: new Date().toISOString().split('T')[0]
-        };
-        
-        setStudents([...students, newStudent]);
+        const data = new Uint8Array(event.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[firstSheetName];
+        const rows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+
+        const createdStudents: Student[] = [];
+        for (const row of rows) {
+          const name: string = row.Name || row.name || '';
+          const rollNo: string = row['Roll No'] || row.rollNo || row.roll || '';
+          const phone: string = row.Phone || row.phone || '';
+          const email: string = row.Email || row.email || '';
+          const guardian: string = row.Guardian || row.guardian || '';
+          const address: string = row.Address || row.address || '';
+
+          if (!name || !rollNo) {
+            continue;
+          }
+
+          try {
+            const payload: any = {
+              name,
+              email: email || `${rollNo}@example.com`,
+              password: 'Temp@1234',
+              role: 'student' as const,
+              phone: phone || undefined,
+              address: address || undefined,
+              class: importClass,
+              rollNumber: rollNo,
+            };
+            const created = await apiFetch<any>('/admin/users', {
+              method: 'POST',
+              body: JSON.stringify(payload),
+            });
+            createdStudents.push({
+              id: created.id,
+              name: created.name,
+              class: created.class,
+              rollNo: created.rollNumber,
+              phone: created.phone ?? '',
+              email: created.email,
+              guardian: guardian || 'Parent/Guardian',
+              address: created.address ?? '',
+              status: 'Active',
+            });
+          } catch (err) {
+            // continue importing next rows
+          }
+        }
+
+        if (createdStudents.length > 0) {
+          setStudents((prev) => [...prev, ...createdStudents]);
+          toast.success(`Imported ${createdStudents.length} students into ${importClass}`);
+        } else {
+          toast.error('No valid rows found to import');
+        }
         setShowImportModal(false);
         setImportClass('');
       } catch (error) {
-        alert('Error importing Excel file. Please check the format.');
+        toast.error('Error importing Excel file. Please check the format.');
       }
     };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
   };
 
   const handleExport = () => {
@@ -196,17 +283,28 @@ export function StudentManagement() {
 
       {/* Filters and Actions */}
       <div className={`${theme.bgColor} rounded-xl p-4 sm:p-6 shadow-sm border ${theme.borderColor} mb-4 sm:mb-6`}>
-        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-4">
-          {/* Search */}
+        <div className="flex flex-col lg:flex-row gap-3 sm:gap-4 mb-4">
+          {/* Name Search */}
           <div className="flex-1 relative">
             <Search className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 ${theme.subtextColor}`} />
             <input
               type="text"
               placeholder={t('searchStudents')}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              value={searchName}
+              onChange={(e) => setSearchName(e.target.value)}
               className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${theme.inputBg}`}
               style={{ focusRingColor: theme.primaryColor }}
+            />
+          </div>
+
+          {/* Roll Search */}
+          <div className="flex-1">
+            <input
+              type="text"
+              placeholder="Search by roll number..."
+              value={searchRoll}
+              onChange={(e) => setSearchRoll(e.target.value)}
+              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${theme.inputBg}`}
             />
           </div>
 
@@ -218,8 +316,10 @@ export function StudentManagement() {
               onChange={(e) => setSelectedClass(e.target.value)}
               className={`flex-1 sm:flex-none px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${theme.inputBg}`}
             >
-              {classes.map(cls => (
-                <option key={cls} value={cls}>{cls === 'all' ? t('allClasses') : cls}</option>
+              {classes.map((cls) => (
+                <option key={cls} value={cls}>
+                  {cls === 'all' ? t('allClasses') : cls}
+                </option>
               ))}
             </select>
           </div>
@@ -646,28 +746,44 @@ export function StudentManagement() {
                 />
               </div>
               <div>
-                <label htmlFor="student-password" className="text-gray-700 mb-2 block">Password *</label>
-                <input
-                  id="student-password"
-                  type="password"
-                  placeholder="Enter password (min 6 characters)"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                  minLength={6}
-                />
+                <label htmlFor="student-password" className="text-gray-700 mb-2 block">
+                  Password *
+                </label>
+                <div className="relative">
+                  <input
+                    id="student-password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Min 8 chars, upper, lower, number, special"
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-500"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {errors.password && (
+                  <p className="mt-1 text-xs text-red-600">{errors.password}</p>
+                )}
               </div>
               <div>
-                <label htmlFor="student-phone" className="text-gray-700 mb-2 block">Phone</label>
+                <label htmlFor="student-phone" className="text-gray-700 mb-2 block">
+                  Phone
+                </label>
                 <input
                   id="student-phone"
                   type="tel"
-                  placeholder="Enter phone number"
+                  placeholder="e.g., +97798..., 98..., 97..., 96..."
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+                {errors.phone && <p className="mt-1 text-xs text-red-600">{errors.phone}</p>}
               </div>
               <div>
                 <label htmlFor="student-address" className="text-gray-700 mb-2 block">Address</label>
@@ -681,15 +797,22 @@ export function StudentManagement() {
                 />
               </div>
               <div>
-                <label htmlFor="student-class" className="text-gray-700 mb-2 block">Class</label>
-                <input
+                <label htmlFor="student-class" className="text-gray-700 mb-2 block">
+                  Class
+                </label>
+                <select
                   id="student-class"
-                  type="text"
-                  placeholder="e.g., Class 10A"
                   value={formData.class}
                   onChange={(e) => setFormData({ ...formData, class: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                >
+                  <option value="">Select class</option>
+                  {availableClasses.map((cls) => (
+                    <option key={cls} value={cls}>
+                      {cls}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label htmlFor="student-rollNumber" className="text-gray-700 mb-2 block">Roll Number</label>
@@ -793,27 +916,50 @@ export function StudentManagement() {
                 />
               </div>
               <div>
-                <label htmlFor="edit-student-password" className="text-gray-700 mb-2 block">Password (leave blank to keep current)</label>
-                <input
-                  id="edit-student-password"
-                  type="password"
-                  placeholder="Enter new password (min 6 characters)"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  minLength={6}
-                />
+                <label
+                  htmlFor="edit-student-password"
+                  className="text-gray-700 mb-2 block"
+                >
+                  Password (leave blank to keep current)
+                </label>
+                <div className="relative">
+                  <input
+                    id="edit-student-password"
+                    type={showEditPassword ? 'text' : 'password'}
+                    placeholder="Min 8 chars, upper, lower, number, special"
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowEditPassword((prev) => !prev)}
+                    className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-500"
+                  >
+                    {showEditPassword ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+                {errors.password && (
+                  <p className="mt-1 text-xs text-red-600">{errors.password}</p>
+                )}
               </div>
               <div>
-                <label htmlFor="edit-student-phone" className="text-gray-700 mb-2 block">Phone</label>
+                <label htmlFor="edit-student-phone" className="text-gray-700 mb-2 block">
+                  Phone
+                </label>
                 <input
                   id="edit-student-phone"
                   type="tel"
-                  placeholder="Enter phone number"
+                  placeholder="e.g., +97798..., 98..., 97..., 96..."
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+                {errors.phone && <p className="mt-1 text-xs text-red-600">{errors.phone}</p>}
               </div>
               <div>
                 <label htmlFor="edit-student-address" className="text-gray-700 mb-2 block">Address</label>
@@ -827,15 +973,22 @@ export function StudentManagement() {
                 />
               </div>
               <div>
-                <label htmlFor="edit-student-class" className="text-gray-700 mb-2 block">Class</label>
-                <input
+                <label htmlFor="edit-student-class" className="text-gray-700 mb-2 block">
+                  Class
+                </label>
+                <select
                   id="edit-student-class"
-                  type="text"
-                  placeholder="e.g., Class 10A"
                   value={formData.class}
                   onChange={(e) => setFormData({ ...formData, class: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                >
+                  <option value="">Select class</option>
+                  {availableClasses.map((cls) => (
+                    <option key={cls} value={cls}>
+                      {cls}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label htmlFor="edit-student-rollNumber" className="text-gray-700 mb-2 block">Roll Number</label>

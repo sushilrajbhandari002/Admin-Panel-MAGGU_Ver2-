@@ -13,6 +13,7 @@ export function Login({ onLogin }: LoginProps) {
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { settings } = useSchoolSettings();
+  const isDark = settings.theme === 'dark';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,10 +51,14 @@ export function Login({ onLogin }: LoginProps) {
 
   return (
     <div 
-      className="min-h-screen flex items-center justify-center p-4 relative"
+      className={`min-h-screen flex items-center justify-center p-4 relative ${
+        isDark ? 'bg-gray-900' : ''
+      }`}
       style={{
         background: settings.loginBackground 
           ? `url(${settings.loginBackground}) center/cover no-repeat` 
+          : isDark
+          ? undefined
           : 'linear-gradient(to bottom right, rgb(239 246 255), rgb(224 231 255))'
       }}
     >
@@ -62,7 +67,11 @@ export function Login({ onLogin }: LoginProps) {
         <div className="absolute inset-0 bg-black/40" />
       )}
       
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8 relative z-10">
+      <div
+        className={`rounded-2xl shadow-xl w-full max-w-md p-8 relative z-10 ${
+          isDark ? 'bg-gray-900 text-gray-100' : 'bg-white'
+        }`}
+      >
         <div className="text-center mb-8">
           {settings.schoolLogo ? (
             <div className="inline-flex items-center justify-center w-16 h-16 mb-4 overflow-hidden rounded-full">
@@ -77,13 +86,13 @@ export function Login({ onLogin }: LoginProps) {
               <GraduationCap className="w-8 h-8 text-white" />
             </div>
           )}
-          <h1 className="text-gray-900 mb-2">Sushil School</h1>
-          <p className="text-gray-600">Super Admin Portal</p>
+          <h1 className={`${isDark ? 'text-gray-100' : 'text-gray-900'} mb-2`}>Sushil School</h1>
+          <p className={isDark ? 'text-gray-400' : 'text-gray-600'}>Super Admin Portal</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label htmlFor="username" className="block text-gray-700 mb-2">
+            <label htmlFor="username" className={`block mb-2 ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>
               Email
             </label>
             <div className="relative">
@@ -96,7 +105,9 @@ export function Login({ onLogin }: LoginProps) {
                   setUsername(e.target.value);
                   setError('');
                 }}
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                  isDark ? 'bg-gray-800 border-gray-700 text-gray-100' : 'border-gray-300'
+                }`}
                 placeholder="Enter your email"
                 required
               />
@@ -104,7 +115,7 @@ export function Login({ onLogin }: LoginProps) {
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-gray-700 mb-2">
+            <label htmlFor="password" className={`block mb-2 ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>
               Password
             </label>
             <div className="relative">
@@ -117,7 +128,9 @@ export function Login({ onLogin }: LoginProps) {
                   setPassword(e.target.value);
                   setError('');
                 }}
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                  isDark ? 'bg-gray-800 border-gray-700 text-gray-100' : 'border-gray-300'
+                }`}
                 placeholder="Enter your password"
                 required
               />
@@ -125,7 +138,11 @@ export function Login({ onLogin }: LoginProps) {
           </div>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+            <div
+              className={`px-4 py-3 rounded-lg border ${
+                isDark ? 'bg-red-900/40 border-red-700 text-red-300' : 'bg-red-50 border-red-200 text-red-700'
+              }`}
+            >
               {error}
             </div>
           )}
@@ -140,7 +157,7 @@ export function Login({ onLogin }: LoginProps) {
         </form>
 
         <div className="mt-6 text-center">
-          <p className="text-gray-500 text-sm">
+          <p className={`${isDark ? 'text-gray-400' : 'text-gray-500'} text-sm`}>
             Demo Credentials: admin@sushilschool.edu / admin123
           </p>
         </div>

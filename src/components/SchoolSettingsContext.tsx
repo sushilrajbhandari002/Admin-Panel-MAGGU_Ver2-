@@ -4,6 +4,7 @@ import { translations, Language, TranslationKey } from './translations';
 interface SchoolSettings {
   schoolLogo: string | null;
   loginBackground: string | null;
+  profileBackground: string | null;
   theme: 'light' | 'dark';
   primaryColor: string;
   secondaryColor: string;
@@ -22,6 +23,7 @@ const SchoolSettingsContext = createContext<SchoolSettingsContextType | undefine
 const defaultSettings: SchoolSettings = {
   schoolLogo: null,
   loginBackground: null,
+  profileBackground: null,
   theme: 'light',
   primaryColor: '#3B82F6',
   secondaryColor: '#8B5CF6',

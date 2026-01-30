@@ -7,8 +7,10 @@ export function SchoolProfile() {
   const { settings, updateSettings } = useSchoolSettings();
   const logoInputRef = useRef<HTMLInputElement>(null);
   const backgroundInputRef = useRef<HTMLInputElement>(null);
+  const profileBackgroundInputRef = useRef<HTMLInputElement>(null);
   const [pendingLogo, setPendingLogo] = useState<string | null>(null);
   const [pendingBackground, setPendingBackground] = useState<string | null>(null);
+  const [pendingProfileBackground, setPendingProfileBackground] = useState<string | null>(null);
   
   const [profileData, setProfileData] = useState({
     name: 'Green Valley International School',
@@ -71,6 +73,24 @@ export function SchoolProfile() {
     }
   };
 
+  const handleProfileBackgroundUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPendingProfileBackground(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleRemoveProfileBackground = () => {
+    setPendingProfileBackground(null);
+    if (settings.profileBackground) {
+      updateSettings({ profileBackground: null });
+    }
+  };
+
   const handlePublishChanges = () => {
     if (pendingLogo) {
       updateSettings({ schoolLogo: pendingLogo });
@@ -80,12 +100,18 @@ export function SchoolProfile() {
       updateSettings({ loginBackground: pendingBackground });
       setPendingBackground(null);
     }
+    if (pendingProfileBackground) {
+      updateSettings({ profileBackground: pendingProfileBackground });
+      setPendingProfileBackground(null);
+    }
     alert('Login page customization published successfully!');
   };
 
-  const hasChanges = pendingLogo !== null || pendingBackground !== null;
+  const hasChanges =
+    pendingLogo !== null || pendingBackground !== null || pendingProfileBackground !== null;
   const displayLogo = pendingLogo || settings.schoolLogo;
   const displayBackground = pendingBackground || settings.loginBackground;
+  const displayProfileBackground = pendingProfileBackground || settings.profileBackground;
 
   return (
     <>
@@ -95,11 +121,34 @@ export function SchoolProfile() {
       </div>
 
       {/* Profile Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl p-8 mb-6 text-white">
+      <div
+        className="rounded-xl p-8 mb-6 text-white relative overflow-hidden"
+        style={
+          displayProfileBackground
+            ? {
+                backgroundImage: `url(${displayProfileBackground})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+              }
+            : undefined
+        }
+      >
+        {!displayProfileBackground && (
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-purple-600" />
+        )}
+        <div className="relative z-10">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-6">
-            <div className="w-24 h-24 bg-white rounded-xl flex items-center justify-center">
-              <School className="w-12 h-12 text-blue-600" />
+            <div className="w-24 h-24 bg-white rounded-xl flex items-center justify-center overflow-hidden">
+              {displayLogo ? (
+                <img
+                  src={displayLogo}
+                  alt="School Logo"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <School className="w-12 h-12 text-blue-600" />
+              )}
             </div>
             <div>
               {isEditing ? (
@@ -119,8 +168,8 @@ export function SchoolProfile() {
                 </>
               ) : (
                 <>
-                  <h2 className="text-white mb-2">{profileData.name}</h2>
-                  <p className="text-white/90">{profileData.motto}</p>
+                  <h2 className="text-white mb-2 text-xl md:text-2xl">{profileData.name}</h2>
+                  <p className="text-white/90 text-sm md:text-base">{profileData.motto}</p>
                 </>
               )}
             </div>
@@ -261,7 +310,9 @@ export function SchoolProfile() {
                   rows={4}
                 />
               ) : (
-                <p className="text-gray-700 leading-relaxed">{profileData.description}</p>
+                <p className="text-gray-700 leading-relaxed text-sm md:text-base">
+                  {profileData.description}
+                </p>
               )}
             </div>
 
@@ -310,6 +361,7 @@ export function SchoolProfile() {
             {/* School Logo Section */}
             <div className="mb-6">
               <label className="text-gray-700 mb-2 block">School Logo (Login Icon)</label>
+              <p className="text-gray-500 text-xs mb-2">Recommended: 128x128px PNG with transparent background</p>
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
                 {displayLogo ? (
                   <div className="space-y-3">
@@ -365,6 +417,7 @@ export function SchoolProfile() {
             {/* Login Background Section */}
             <div className="mb-6">
               <label className="text-gray-700 mb-2 block">Login Background Image</label>
+              <p className="text-gray-500 text-xs mb-2">Recommended: 1600x900px JPG or PNG</p>
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
                 {displayBackground ? (
                   <div className="space-y-3">
@@ -417,6 +470,64 @@ export function SchoolProfile() {
               </div>
             </div>
 
+            {/* Profile Background Section */}
+            <div className="mb-6">
+              <label className="text-gray-700 mb-2 block">Profile Background Image</label>
+              <p className="text-gray-500 text-xs mb-2">Recommended: 1600x400px JPG or PNG</p>
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                {displayProfileBackground ? (
+                  <div className="space-y-3">
+                    <div className="relative inline-block w-full">
+                      <img
+                        src={displayProfileBackground}
+                        alt="Profile Background"
+                        className="w-full h-32 object-cover mx-auto rounded-lg"
+                      />
+                      {pendingProfileBackground && (
+                        <div className="absolute top-2 right-2 bg-orange-500 text-white px-2 py-1 rounded-full text-xs">
+                          Pending
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex gap-2 justify-center">
+                      <button
+                        onClick={() => profileBackgroundInputRef.current?.click()}
+                        className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                      >
+                        Change Background
+                      </button>
+                      <button
+                        onClick={handleRemoveProfileBackground}
+                        className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <Image className="w-16 h-16 text-gray-400 mx-auto mb-3" />
+                    <p className="text-gray-600 text-sm mb-3">
+                      Upload a background image for the School Profile header
+                    </p>
+                    <button
+                      onClick={() => profileBackgroundInputRef.current?.click()}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                    >
+                      Choose File
+                    </button>
+                  </>
+                )}
+                <input
+                  ref={profileBackgroundInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleProfileBackgroundUpload}
+                  className="hidden"
+                />
+              </div>
+            </div>
+
             {/* Publish Button */}
             {hasChanges && (
               <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
@@ -434,6 +545,7 @@ export function SchoolProfile() {
             )}
           </div>
         </div>
+      </div>
       </div>
     </>
   );

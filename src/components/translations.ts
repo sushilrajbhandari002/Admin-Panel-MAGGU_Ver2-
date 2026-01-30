@@ -10,6 +10,8 @@ const englishTranslations = {
   reports: 'Reports',
   schoolProfile: 'School Profile',
   settings: 'Settings',
+  classes: 'Classes',
+  roles: 'Roles',
   
   // Dashboard
   dashboardTitle: 'Dashboard',
@@ -162,6 +164,8 @@ const nepaliTranslations = {
   reports: 'रिपोर्टहरू',
   schoolProfile: 'विद्यालय प्रोफाइल',
   settings: 'सेटिङहरू',
+  classes: 'कक्षाहरू',
+  roles: 'भूमिकाहरू',
   
   // Dashboard
   dashboardTitle: 'ड्यासबोर्ड',

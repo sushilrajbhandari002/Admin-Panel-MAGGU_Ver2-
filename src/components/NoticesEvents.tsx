@@ -104,11 +104,9 @@ export function NoticesEvents() {
   }, [adminData]);
 
   const refreshData = async () => {
-    // Trigger a page refresh to reload admin data
-    // In a production app, you'd want to use a context refresh function
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
+    // For now, keep local state in sync without full page reload.
+    // In a larger app, this can call a context refresh function.
+    return;
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -418,12 +416,26 @@ export function NoticesEvents() {
                   </div>
                   {notice.attachments && notice.attachments.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-2">
-                      {notice.attachments.map((file, index) => (
-                        <span key={index} className="flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs">
-                          <Paperclip className="w-3 h-3" />
-                          {file.name}
-                        </span>
-                      ))}
+                      {notice.attachments.map((file, index) => {
+                        const isImage = /\.(png|jpe?g|gif|webp)$/i.test(file.name);
+                        return (
+                          <div
+                            key={index}
+                            className="flex items-center gap-2 px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs"
+                          >
+                            {isImage ? (
+                              <img
+                                src={file.url}
+                                alt={file.name}
+                                className="w-10 h-10 object-cover rounded"
+                              />
+                            ) : (
+                              <Paperclip className="w-3 h-3" />
+                            )}
+                            <span className="truncate max-w-[120px]">{file.name}</span>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -538,12 +550,26 @@ export function NoticesEvents() {
                   </div>
                   {result.attachments && result.attachments.length > 0 && (
                     <div className="mb-2 flex flex-wrap gap-2">
-                      {result.attachments.map((file, index) => (
-                        <span key={index} className="flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs">
-                          <Paperclip className="w-3 h-3" />
-                          {file.name}
-                        </span>
-                      ))}
+                      {result.attachments.map((file, index) => {
+                        const isImage = /\.(png|jpe?g|gif|webp)$/i.test(file.name);
+                        return (
+                          <div
+                            key={index}
+                            className="flex items-center gap-2 px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs"
+                          >
+                            {isImage ? (
+                              <img
+                                src={file.url}
+                                alt={file.name}
+                                className="w-10 h-10 object-cover rounded"
+                              />
+                            ) : (
+                              <Paperclip className="w-3 h-3" />
+                            )}
+                            <span className="truncate max-w-[120px]">{file.name}</span>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                   <div className="flex items-center gap-4 text-gray-500 text-xs">
@@ -821,20 +847,31 @@ export function NoticesEvents() {
                   
                   {attachments.length > 0 && (
                     <div className="mt-3 space-y-2">
-                      {attachments.map((file, index) => (
-                        <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                          <span className="text-sm text-gray-700 flex items-center gap-2">
-                            <Paperclip className="w-4 h-4" />
-                            {file.name}
-                          </span>
-                          <button
-                            onClick={() => removeAttachment(index)}
-                            className="text-red-600 hover:text-red-700"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ))}
+                      {attachments.map((file, index) => {
+                        const isImage = /\.(png|jpe?g|gif|webp)$/i.test(file.name);
+                        return (
+                          <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                            <div className="flex items-center gap-2">
+                              {isImage ? (
+                                <img
+                                  src={file.url}
+                                  alt={file.name}
+                                  className="w-10 h-10 object-cover rounded"
+                                />
+                              ) : (
+                                <Paperclip className="w-4 h-4" />
+                              )}
+                              <span className="text-sm text-gray-700">{file.name}</span>
+                            </div>
+                            <button
+                              onClick={() => removeAttachment(index)}
+                              className="text-red-600 hover:text-red-700"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
